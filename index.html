@@ -277,10 +277,10 @@ const GOAL = {
 const W_KEY = "yun_dong_lun_pan_weight_v1";
 
 function loadWeights() {
-  try { return JSON.parse(localStorage.getItem(W_KEY)) || {}; }
+  try { return JSON.parse(safeGet(W_KEY)) || {}; }
   catch(e) { return {}; }
 }
-function saveWeights(w) { localStorage.setItem(W_KEY, JSON.stringify(w)); }
+function saveWeights(w) { safeSet(W_KEY, JSON.stringify(w)); }
 
 function todayKey() {
   const d = new Date();
@@ -425,14 +425,37 @@ function drawWeightChart() {
   });
 }
 
-// ===== localStorage =====
+// ===== localStorage（带 iOS Safari 本地文件防护）=====
 const LS_KEY = "yun_dong_lun_pan_v1";
 
+// 检测存储是否可用（iOS Safari file:// 下可能抛异常）
+let storageOK = true;
+try {
+  const t = "__test__";
+  localStorage.setItem(t, "1");
+  localStorage.removeItem(t);
+} catch(e) {
+  storageOK = false;
+}
+
+function safeGet(key) {
+  if (!storageOK) return null;
+  try { return localStorage.getItem(key); } catch(e) { return null; }
+}
+function safeSet(key, val) {
+  if (!storageOK) return;
+  try { localStorage.setItem(key, val); } catch(e) {}
+}
+function safeRemove(key) {
+  if (!storageOK) return;
+  try { localStorage.removeItem(key); } catch(e) {}
+}
+
 function loadData() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY)) || { days: {} }; }
+  try { return JSON.parse(safeGet(LS_KEY)) || { days: {} }; }
   catch(e) { return { days: {} }; }
 }
-function saveData(d) { localStorage.setItem(LS_KEY, JSON.stringify(d)); }
+function saveData(d) { safeSet(LS_KEY, JSON.stringify(d)); }
 
 function todayStr() {
   const d = new Date();
@@ -522,7 +545,12 @@ function showResult() {
   document.getElementById("rDetail").innerHTML = item.detail;
   document.getElementById("rTip").textContent = "💡 " + item.tip;
   document.getElementById("result").style.display = "block";
-  document.getElementById("againBtn").style.display = "inline-block";
+  // 没开始计时 = 纯抽盲盒，保持"开盲盒"按钮；开始计时后才切"这组练完"
+  if (timerStarted) {
+    document.getElementById("againBtn").style.display = "inline-block";
+  } else {
+    document.getElementById("mainBtn").style.display = "inline-block";
+  }
   currentAction = item.emoji + " " + item.name;
 }
 
@@ -737,6 +765,7 @@ const TOTAL_SECONDS = 20 * 60;
 let remaining = TOTAL_SECONDS;
 let timerInterval = null;
 let timerRunning = false;
+let timerStarted = false; // 是否点过"开始计时"（区分纯抽盲盒 vs 开练）
 
 function formatTime(s) {
   const m = Math.floor(s / 60);
@@ -772,7 +801,11 @@ function beep() {
 
 document.getElementById("timerStart").addEventListener("click", function() {
   if (!timerRunning) {
+    timerStarted = true; // 真正开练了
     timerRunning = true;
+    // 开练后主按钮从"开盲盒"切到"这组练完"
+    document.getElementById("mainBtn").style.display = "none";
+    document.getElementById("againBtn").style.display = "inline-block";
     this.textContent = "⏸ 暂停";
     this.classList.add("running");
     document.getElementById("timerReset").style.display = "inline-block";
@@ -799,11 +832,15 @@ document.getElementById("timerStart").addEventListener("click", function() {
 });
 
 document.getElementById("timerReset").addEventListener("click", function() {
+  timerStarted = false; // 重置 = 回到纯抽盲盒状态
   timerRunning = false;
   clearInterval(timerInterval);
   timerInterval = null;
   remaining = TOTAL_SECONDS;
   updateTimerDisplay();
+  // 重置后主按钮切回"开盲盒"
+  document.getElementById("againBtn").style.display = "none";
+  document.getElementById("mainBtn").style.display = "inline-block";
   const startBtn = document.getElementById("timerStart");
   startBtn.textContent = "▶ 开始计时";
   startBtn.classList.remove("running");
@@ -811,6 +848,12 @@ document.getElementById("timerReset").addEventListener("click", function() {
 });
 
 // ===== 初始化 =====
+if (!storageOK) {
+  const warn = document.createElement("div");
+  warn.style.cssText = "background:#7c2d12;color:#fca5a5;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:14px;text-align:center;line-height:1.5;";
+  warn.innerHTML = "⚠️ 当前浏览器禁止本地存储（Safari 打开本地文件常见），打卡和体重数据 <b>无法保存</b>。<br>建议：点分享按钮 → 添加到主屏幕，或用 Chrome/Safari 通过 http 方式打开。";
+  document.body.prepend(warn);
+}
 drawWheel();
 updateCheckin();
 updateStats();
