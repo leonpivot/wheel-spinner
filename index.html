@@ -545,12 +545,9 @@ function showResult() {
   document.getElementById("rDetail").innerHTML = item.detail;
   document.getElementById("rTip").textContent = "💡 " + item.tip;
   document.getElementById("result").style.display = "block";
-  // 没开始计时 = 纯抽盲盒，保持"开盲盒"按钮；开始计时后才切"这组练完"
-  if (timerStarted) {
-    document.getElementById("againBtn").style.display = "inline-block";
-  } else {
-    document.getElementById("mainBtn").style.display = "inline-block";
-  }
+  // 两个按钮并存：练完=记录计数+转下一个；开盲盒=不记录，重抽
+  document.getElementById("againBtn").style.display = "inline-block";
+  document.getElementById("mainBtn").style.display = "inline-block";
   currentAction = item.emoji + " " + item.name;
 }
 
@@ -765,7 +762,6 @@ const TOTAL_SECONDS = 20 * 60;
 let remaining = TOTAL_SECONDS;
 let timerInterval = null;
 let timerRunning = false;
-let timerStarted = false; // 是否点过"开始计时"（区分纯抽盲盒 vs 开练）
 
 function formatTime(s) {
   const m = Math.floor(s / 60);
@@ -801,11 +797,7 @@ function beep() {
 
 document.getElementById("timerStart").addEventListener("click", function() {
   if (!timerRunning) {
-    timerStarted = true; // 真正开练了
     timerRunning = true;
-    // 开练后主按钮从"开盲盒"切到"这组练完"
-    document.getElementById("mainBtn").style.display = "none";
-    document.getElementById("againBtn").style.display = "inline-block";
     this.textContent = "⏸ 暂停";
     this.classList.add("running");
     document.getElementById("timerReset").style.display = "inline-block";
@@ -832,15 +824,11 @@ document.getElementById("timerStart").addEventListener("click", function() {
 });
 
 document.getElementById("timerReset").addEventListener("click", function() {
-  timerStarted = false; // 重置 = 回到纯抽盲盒状态
   timerRunning = false;
   clearInterval(timerInterval);
   timerInterval = null;
   remaining = TOTAL_SECONDS;
   updateTimerDisplay();
-  // 重置后主按钮切回"开盲盒"
-  document.getElementById("againBtn").style.display = "none";
-  document.getElementById("mainBtn").style.display = "inline-block";
   const startBtn = document.getElementById("timerStart");
   startBtn.textContent = "▶ 开始计时";
   startBtn.classList.remove("running");
