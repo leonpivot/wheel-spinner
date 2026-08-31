@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运动轮盘 · 开盲盒减肥</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1117;
+    color: #e8e8e8;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 40px;
+  }
+  h1 { font-size: 24px; margin: 12px 0 4px; letter-spacing: 2px; }
+  .subtitle { color: #888; font-size: 13px; margin-bottom: 20px; }
+
+  /* 轮盘 */
+  .wheel-wrap { position: relative; width: 300px; height: 300px; margin: 10px auto 30px; }
+  canvas { width: 300px; height: 300px; border-radius: 50%; box-shadow: 0 0 30px rgba(99,102,241,.25); }
+  .pointer {
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 14px solid transparent; border-right: 14px solid transparent;
+    border-top: 26px solid #ff5c5c;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,.5));
+    z-index: 10;
+  }
+  .center-dot {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 46px; height: 46px; border-radius: 50%;
+    background: #1a1d2a; border: 3px solid #4f46e5;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; color: #fff; z-index: 10;
+    cursor: pointer; user-select: none;
+    transition: background .2s;
+  }
+  .center-dot:hover { background: #4f46e5; }
+  .center-dot:active { transform: translate(-50%,-50%) scale(.95); }
+
+  /* 结果区 */
+  .result {
+    display: none;
+    background: #1a1d2a;
+    border: 1px solid #2a2f45;
+    border-radius: 16px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    text-align: center;
+    width: 100%; max-width: 360px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  }
+  .result .emoji { font-size: 40px; }
+  .result .name { font-size: 22px; font-weight: 700; margin: 6px 0; }
+  .result .detail { color: #9ca3af; font-size: 14px; line-height: 1.6; }
+  .result .highlight { color: #fbbf24; font-weight: 700; }
+  .result .tip { color: #6b7280; font-size: 12px; margin-top: 8px; }
+
+  /* 按钮 */
+  .btn {
+    background: #4f46e5; color: #fff; border: none; border-radius: 12px;
+    padding: 14px 32px; font-size: 17px; font-weight: 700; cursor: pointer;
+    transition: transform .15s, background .2s;
+  }
+  .btn:hover { background: #6366f1; }
+  .btn:active { transform: scale(.96); }
+  .btn.secondary { background: #2a2f45; color: #c7c9d4; margin-top: 10px; }
+  .btn.secondary:hover { background: #37415e; }
+  .btn.next { background: #16a34a; color: #fff; font-size: 18px; padding: 16px 20px; width: 100%; max-width: 360px; margin-top: 10px; box-shadow: 0 0 20px rgba(22,163,74,.35); animation: glow 2s infinite; }
+  .btn.next:hover { background: #22c55e; }
+  @keyframes glow { 0%,100% { box-shadow: 0 0 20px rgba(22,163,74,.35); } 50% { box-shadow: 0 0 30px rgba(22,163,74,.6); } }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* 打卡 */
+  .checkin {
+    width: 100%; max-width: 360px; margin-top: 24px;
+    background: #1a1d2a; border: 1px solid #2a2f45; border-radius: 16px; padding: 16px 20px;
+  }
+  .checkin h3 { font-size: 15px; color: #9ca3af; margin-bottom: 10px; }
+  .checkin .row { display: flex; justify-content: space-between; align-items: center; }
+  .checkin .streak { font-size: 14px; }
+  .checkin .streak b { color: #fbbf24; font-size: 20px; }
+  .checkin .btn.small { padding: 8px 18px; font-size: 14px; border-radius: 8px; }
+  .btn.done { background: #16a34a; }
+  .btn.done:hover { background: #22c55e; }
+  .log { margin-top: 12px; max-height: 120px; overflow-y: auto; font-size: 12px; color: #6b7280; line-height: 1.8; border-top: 1px solid #2a2f45; padding-top: 8px; }
+  .log div { display: flex; justify-content: space-between; }
+  .log .date { color: #4b5563; }
+  .hint { margin-top: 8px; font-size: 12px; color: #fbbf24; text-align: center; line-height: 1.5; }
+
+  /* 统计 */
+  .stats {
+    width: 100%; max-width: 360px; margin-top: 16px;
+    background: #1a1d2a; border: 1px solid #2a2f45; border-radius: 16px;
+    padding: 16px 20px;
+  }
+  .stats h3 { font-size: 15px; color: #9ca3af; margin-bottom: 12px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat { background: #12141d; border-radius: 10px; padding: 10px 4px; text-align: center; }
+  .stat-num { font-size: 22px; font-weight: 800; color: #fbbf24; line-height: 1.2; }
+  .stat-label { font-size: 11px; color: #6b7280; margin-top: 2px; }
+  .stats-sub { margin-top: 10px; font-size: 12px; color: #6b7280; text-align: center; line-height: 1.6; }
+  .stats-sub b { color: #9ca3af; }
+
+  /* 动作榜 */
+  .dist-tabs { display: flex; gap: 8px; margin-top: 14px; }
+  .dist-tab {
+    flex: 1; background: #12141d; color: #6b7280; border: 1px solid #2a2f45;
+    border-radius: 8px; padding: 6px 0; font-size: 13px; cursor: pointer; transition: all .2s;
+  }
+  .dist-tab:hover { color: #c7c9d4; }
+  .dist-tab.active { background: #4f46e5; border-color: #4f46e5; color: #fff; font-weight: 700; }
+  .dist-title { font-size: 13px; color: #9ca3af; margin: 14px 0 8px; }
+  .dist-title span { color: #fbbf24; font-weight: 700; }
+  .dist-list { display: flex; flex-direction: column; gap: 6px; }
+  .dist-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .dist-name { width: 88px; color: #c7c9d4; flex-shrink: 0; text-align: right; }
+  .dist-bar-wrap { flex: 1; height: 14px; background: #12141d; border-radius: 7px; overflow: hidden; }
+  .dist-bar { height: 100%; background: linear-gradient(90deg, #4f46e5, #a855f7); border-radius: 7px; min-width: 4px; transition: width .4s; }
+  .dist-cnt { width: 24px; color: #fbbf24; font-weight: 700; flex-shrink: 0; text-align: center; }
+  .dist-empty { font-size: 12px; color: #4b5563; text-align: center; padding: 10px 0; }
+
+  .goal { width: 100%; max-width: 360px; margin-top: 16px; background: #1a1d2a; border: 1px solid #2a2f45; border-radius: 16px; padding: 14px 20px; font-size: 13px; color: #9ca3af; text-align: center; }
+  .goal b { color: #fbbf24; }
+  .goal-main { font-size: 17px; font-weight: 800; color: #e8e8e8; }
+  .goal-main b { color: #fbbf24; }
+  .goal-detail { margin-top: 4px; font-size: 13px; color: #9ca3af; }
+  .goal-detail b { color: #fbbf24; }
+  .goal-actions { margin-top: 10px; }
+  .weight-btn { background: #37415e; }
+  .weight-btn:hover { background: #4f46e5; }
+  .weight-input { margin-top: 10px; display: flex; gap: 8px; justify-content: center; align-items: center; }
+  .weight-input input {
+    width: 140px; background: #12141d; border: 1px solid #2a2f45; border-radius: 8px;
+    color: #e8e8e8; padding: 8px 10px; font-size: 14px; text-align: center;
+  }
+  .weight-input input:focus { outline: none; border-color: #4f46e5; }
+  .weight-input .btn.small { padding: 8px 14px; font-size: 13px; }
+
+  /* 图表 */
+  .chart-wrap {
+    width: 100%; max-width: 360px; margin-top: 16px;
+    background: #1a1d2a; border: 1px solid #2a2f45; border-radius: 16px;
+    padding: 16px 12px; text-align: center; position: relative;
+  }
+  .chart-wrap h3 { font-size: 15px; color: #9ca3af; margin-bottom: 8px; }
+  .chart-wrap canvas { width: 100%; height: auto; }
+  .chart-empty { font-size: 12px; color: #4b5563; padding: 30px 0; }
+
+  /* 计时器 */
+  .timer {
+    width: 100%; max-width: 360px; margin-top: 16px;
+    background: #1a1d2a; border: 1px solid #2a2f45; border-radius: 16px;
+    padding: 16px 20px; text-align: center;
+  }
+  .timer-display {
+    font-size: 48px; font-weight: 800; font-variant-numeric: tabular-nums;
+    color: #fbbf24; letter-spacing: 2px; line-height: 1.1;
+  }
+  .timer-display.low { color: #ff5c5c; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .timer-label { font-size: 12px; color: #6b7280; margin: 4px 0 10px; }
+  .timer-btns { display: flex; justify-content: center; gap: 10px; }
+  .timer-btns .btn.small { padding: 8px 20px; font-size: 14px; }
+  .btn.running { background: #b45309; }
+  .btn.running:hover { background: #d97706; }
+</style>
+</head>
+<body>
+  <h1>🎡 运动轮盘</h1>
+  <div class="subtitle">转到啥练啥 · 20分钟收工</div>
+
+  <div class="goal" id="goal">
+    <div class="goal-main" id="goalMain"></div>
+    <div class="goal-detail" id="goalDetail"></div>
+    <div class="goal-actions">
+      <button class="btn small weight-btn" id="weightBtn">⚖️ 记录体重</button>
+    </div>
+    <div class="weight-input" id="weightInput" style="display:none">
+      <input type="number" id="weightVal" placeholder="输入今天体重(斤)" min="80" max="300" step="0.1">
+      <button class="btn small" id="weightSave">保存</button>
+      <button class="btn small" id="weightCancel">取消</button>
+    </div>
+  </div>
+
+  <div class="wheel-wrap">
+    <canvas id="wheel" width="300" height="300"></canvas>
+    <div class="pointer"></div>
+    <div class="center-dot" id="spinBtn">转!</div>
+  </div>
+
+  <div class="result" id="result">
+    <div class="emoji" id="rEmoji"></div>
+    <div class="name" id="rName"></div>
+    <div class="detail" id="rDetail"></div>
+    <div class="tip" id="rTip"></div>
+  </div>
+
+  <button class="btn" id="mainBtn">🎲 开盲盒</button>
+  <button class="btn next" id="againBtn" style="display:none">✅ 这组练完 · 自动转下一个</button>
+
+  <!-- 20分钟计时器 -->
+  <div class="timer">
+    <div class="timer-display" id="timerDisplay">20:00</div>
+    <div class="timer-label">⏱ 20分钟循环 · 响铃收工</div>
+    <div class="timer-btns">
+      <button class="btn small" id="timerStart">▶ 开始计时</button>
+      <button class="btn small" id="timerReset" style="display:none">↺ 重置</button>
+    </div>
+  </div>
+
+  <div class="checkin">
+    <h3>📋 今日打卡</h3>
+    <div class="row">
+      <div class="streak">连续打卡 <b id="streak">0</b> 天</div>
+      <button class="btn small" id="checkinBtn">✅ 练完了</button>
+    </div>
+    <div class="hint" id="hint"></div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <!-- 统计 -->
+  <div class="stats">
+    <h3>📊 统计</h3>
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-num" id="statToday">0</div><div class="stat-label">今日组数</div></div>
+      <div class="stat"><div class="stat-num" id="statWeek">0</div><div class="stat-label">本周天数</div></div>
+      <div class="stat"><div class="stat-num" id="statWeekGroups">0</div><div class="stat-label">本周组数</div></div>
+      <div class="stat"><div class="stat-num" id="statTotal">0</div><div class="stat-label">累计天数</div></div>
+    </div>
+    <div class="stats-sub" id="statsSub"></div>
+
+    <!-- 动作榜 -->
+    <div class="dist-tabs">
+      <button class="dist-tab active" data-range="week">本周</button>
+      <button class="dist-tab" data-range="month">本月</button>
+      <button class="dist-tab" data-range="all">全部</button>
+    </div>
+    <div class="dist-title">🏅 动作榜 <span id="distRangeLabel">本周</span></div>
+    <div class="dist-list" id="distList"></div>
+  </div>
+
+  <!-- 体重趋势 -->
+  <div class="chart-wrap">
+    <h3>📉 体重趋势</h3>
+    <canvas id="weightChart" width="680" height="280"></canvas>
+    <div class="chart-empty" id="chartEmpty">还没记录体重 · 点上面按钮记一笔</div>
+  </div>
+
+<script>
+// ===== 动作库：单格5-8分钟，20分钟可转2-4把 =====
+const ITEMS = [
+  { emoji: "🏃", name: "开合跳", detail: "做 <span class='highlight'>100个</span>，分4组，每组25个，组间休息30秒", tip: "手臂要举过头顶，落地轻一点" },
+  { emoji: "🦵", name: "深蹲", detail: "做 <span class='highlight'>60个</span>，分4组，每组15个，组间休息45秒", tip: "膝盖别内扣，臀部向后坐" },
+  { emoji: "💪", name: "俯卧撑", detail: "做 <span class='highlight'>45个</span>，分3组，每组15个，组间休息60秒，做不动就跪姿", tip: "身体保持一条直线，别塌腰" },
+  { emoji: "🔥", name: "高抬腿", detail: "原地跑 <span class='highlight'>4组×40秒</span>，组间休息30秒", tip: "大腿抬到与地面平行，摆臂跟上" },
+  { emoji: "⛰️", name: "登山跑", detail: "做 <span class='highlight'>4组×40秒</span>，组间休息30秒", tip: "核心收紧，膝盖往胸口方向顶" },
+  { emoji: "⚡", name: "波比跳", detail: "做 <span class='highlight'>30个</span>，分3组，每组10个，组间休息60秒，做不动就慢速", tip: "全场最狠，干完你就是爷" },
+  { emoji: "🧘", name: "平板支撑", detail: "做 <span class='highlight'>3组×75秒</span>，组间休息45秒", tip: "臀部夹紧，别塌腰别撅屁股" },
+  { emoji: "📐", name: "卷腹", detail: "做 <span class='highlight'>60个</span>，分4组，每组15个，组间休息30秒", tip: "脖子放松，用腹肌发力卷起" },
+  { emoji: "🦶", name: "仰卧抬腿", detail: "做 <span class='highlight'>45个</span>，分3组，每组15个，组间休息30秒", tip: "下腹救星，腿别放到底" },
+  { emoji: "🍑", name: "臀桥", detail: "做 <span class='highlight'>60个</span>，分4组，每组15个，组间休息30秒", tip: "顶到最高点停1秒，夹臀" },
+  { emoji: "🔀", name: "组合套餐", detail: "深蹲<span class='highlight'>15</span> + 俯卧撑<span class='highlight'>10</span> + 卷腹<span class='highlight'>15</span>，<span class='highlight'>循环4组</span>，组间休息60秒", tip: "三样全干完，今天你就赢了" },
+  { emoji: "🧱", name: "靠墙静蹲", detail: "背贴墙蹲 <span class='highlight'>4组×45秒</span>，组间休息45秒", tip: "大腿与地面平行，膝盖别超过脚尖，腿酸就对了" }
+];
+
+// ===== 目标（可改） =====
+const GOAL = {
+  start: 166,     // 起始体重（斤）
+  target: 150,    // 目标体重（斤）
+  date: "2027-01-01"
+};
+const W_KEY = "yun_dong_lun_pan_weight_v1";
+
+function loadWeights() {
+  try { return JSON.parse(localStorage.getItem(W_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function saveWeights(w) { localStorage.setItem(W_KEY, JSON.stringify(w)); }
+
+function todayKey() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+
+// 最新体重（记录里最新一条，没有就用起始值）
+function latestWeight() {
+  const weights = loadWeights();
+  const keys = Object.keys(weights).sort();
+  return keys.length > 0 ? weights[keys[keys.length - 1]] : GOAL.start;
+}
+
+// 剩余天数
+function daysLeft() {
+  const target = new Date(GOAL.date + "T00:00:00");
+  const now = new Date();
+  now.setHours(0,0,0,0);
+  return Math.max(0, Math.round((target - now) / 86400000));
+}
+
+function updateGoal() {
+  const cur = latestWeight();
+  const gap = Math.max(0, cur - GOAL.target);
+  const left = daysLeft();
+  const main = document.getElementById("goalMain");
+  const detail = document.getElementById("goalDetail");
+  const round1 = v => Math.round(v * 10) / 10;
+  main.innerHTML = "🎯 <b>" + round1(cur) + "斤</b> → <b>" + GOAL.target + "斤</b>";
+  detail.innerHTML = "还差 <b>" + round1(gap) + "</b> 斤 · 还有 <b>" + left + "</b> 天（" + GOAL.date + "）";
+}
+
+// 记录体重
+document.getElementById("weightBtn").addEventListener("click", function() {
+  document.getElementById("weightInput").style.display = "flex";
+  document.getElementById("weightVal").value = latestWeight();
+  document.getElementById("weightVal").focus();
+});
+document.getElementById("weightCancel").addEventListener("click", function() {
+  document.getElementById("weightInput").style.display = "none";
+});
+document.getElementById("weightSave").addEventListener("click", function() {
+  const v = parseFloat(document.getElementById("weightVal").value);
+  if (!v || v < 80 || v > 300) {
+    alert("输入个正经数，80-300斤之间");
+    return;
+  }
+  const weights = loadWeights();
+  weights[todayKey()] = v; // 同一天覆盖
+  saveWeights(weights);
+  document.getElementById("weightInput").style.display = "none";
+  updateGoal();
+  drawWeightChart();
+});
+
+// 回车保存
+document.getElementById("weightVal").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") document.getElementById("weightSave").click();
+});
+
+// 体重折线图
+function drawWeightChart() {
+  const canvas = document.getElementById("weightChart");
+  const empty = document.getElementById("chartEmpty");
+  const weights = loadWeights();
+  const keys = Object.keys(weights).sort();
+  if (keys.length === 0) {
+    canvas.style.display = "none";
+    empty.style.display = "block";
+    return;
+  }
+  canvas.style.display = "block";
+  empty.style.display = "none";
+
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const padL = 42, padR = 16, padT = 20, padB = 32;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = "11px sans-serif";
+
+  // 数据点
+  const points = keys.map(k => ({ date: k, w: weights[k] }));
+  const allW = points.map(p => p.w).concat([GOAL.target]);
+  let minW = Math.min.apply(null, allW) - 2;
+  let maxW = Math.max.apply(null, allW) + 2;
+  minW = Math.floor(minW); maxW = Math.ceil(maxW);
+
+  function x(i) { return points.length === 1 ? padL + plotW / 2 : padL + (i / (points.length - 1)) * plotW; }
+  function y(w) { return padT + plotH - ((w - minW) / (maxW - minW)) * plotH; }
+
+  // 网格 + Y轴刻度
+  ctx.strokeStyle = "#2a2f45";
+  ctx.fillStyle = "#6b7280";
+  ctx.lineWidth = 1;
+  const steps = 4;
+  for (let i = 0; i <= steps; i++) {
+    const w = minW + (i / steps) * (maxW - minW);
+    const yy = y(w);
+    ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR, yy); ctx.stroke();
+    ctx.fillText(Math.round(w), 4, yy + 4);
+  }
+
+  // X轴日期（首尾+中间）
+  ctx.fillStyle = "#6b7280";
+  const labelIdx = points.length <= 3 ? points.map((_, i) => i) : [0, Math.floor((points.length-1)/2), points.length-1];
+  labelIdx.forEach(i => {
+    const d = points[i].date.split("-");
+    ctx.fillText(d[1] + "/" + d[2], x(i) - 12, H - 10);
+  });
+
+  // 目标线（虚线）
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = "#16a34a";
+  ctx.beginPath(); ctx.moveTo(padL, y(GOAL.target)); ctx.lineTo(W - padR, y(GOAL.target)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#16a34a";
+  ctx.fillText("目标 " + GOAL.target, W - padR - 70, y(GOAL.target) - 5);
+
+  // 折线
+  ctx.strokeStyle = "#fbbf24";
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  points.forEach((p, i) => { i === 0 ? ctx.moveTo(x(i), y(p.w)) : ctx.lineTo(x(i), y(p.w)); });
+  ctx.stroke();
+
+  // 数据点 + 数值（点多时只标部分，防糊）
+  const numLabelIdx = points.length <= 12
+    ? points.map((_, i) => i)
+    : [0, Math.floor(points.length/4), Math.floor(points.length/2), Math.floor(points.length*3/4), points.length-1];
+  points.forEach((p, i) => {
+    const px = x(i), py = y(p.w);
+    const dotR = points.length > 30 ? 2.5 : 4;
+    ctx.beginPath(); ctx.arc(px, py, dotR, 0, Math.PI * 2);
+    ctx.fillStyle = "#fbbf24"; ctx.fill();
+    ctx.strokeStyle = "#0f1117"; ctx.lineWidth = 1.5; ctx.stroke();
+    if (numLabelIdx.includes(i)) {
+      ctx.fillStyle = "#c7c9d4";
+      ctx.fillText(Math.round(p.w * 10) / 10, px - 10, py - 10);
+    }
+  });
+}
+
+// ===== localStorage =====
+const LS_KEY = "yun_dong_lun_pan_v1";
+
+function loadData() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || { days: {} }; }
+  catch(e) { return { days: {} }; }
+}
+function saveData(d) { localStorage.setItem(LS_KEY, JSON.stringify(d)); }
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function dayLabel(ts) {
+  const d = new Date(ts);
+  return (d.getMonth()+1) + "月" + d.getDate() + "日";
+}
+
+// ===== 轮盘绘制 =====
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+const N = ITEMS.length;
+const colors = ["#4f46e5","#7c3aed","#9333ea","#a855f7","#6366f1","#8b5cf6","#6d28d9","#7e22ce","#5b21b6","#4338ca","#6d28d9","#4f46e5"];
+let currentAngle = 0;
+let spinning = false;
+
+function drawWheel() {
+  const cx = 150, cy = 150, r = 145;
+  const seg = (Math.PI * 2) / N;
+  ctx.clearRect(0, 0, 300, 300);
+  for (let i = 0; i < N; i++) {
+    const start = currentAngle + i * seg;
+    const end = start + seg;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, start, end);
+    ctx.closePath();
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fill();
+    ctx.strokeStyle = "#0f1117";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 文字
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(start + seg / 2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText(ITEMS[i].emoji + " " + ITEMS[i].name, r - 14, 4);
+    ctx.restore();
+  }
+}
+
+function spinWheel() {
+  if (spinning) return;
+  spinning = true;
+  document.getElementById("mainBtn").style.display = "none";
+  document.getElementById("againBtn").style.display = "none";
+  document.getElementById("result").style.display = "none";
+  // 随机转 3-6 圈 + 随机落点
+  const extra = Math.random() * Math.PI * 2;
+  const target = currentAngle + (Math.PI * 2) * (3 + Math.random() * 3) + extra;
+  const startAngle = currentAngle;
+  const duration = 3000;
+  const t0 = performance.now();
+
+  function animate(t) {
+    const p = Math.min((t - t0) / duration, 1);
+    const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+    currentAngle = startAngle + (target - startAngle) * eased;
+    drawWheel();
+    if (p < 1) requestAnimationFrame(animate);
+    else {
+      spinning = false;
+      showResult();
+    }
+  }
+  requestAnimationFrame(animate);
+}
+
+function showResult() {
+  // 指针在顶部(270度=3/4圈)，找指针对应的扇形
+  const seg = (Math.PI * 2) / N;
+  // 指针方向：正上方 = -PI/2
+  const pointerAngle = -Math.PI / 2;
+  let normalized = (pointerAngle - currentAngle) % (Math.PI * 2);
+  if (normalized < 0) normalized += Math.PI * 2;
+  const idx = Math.floor(normalized / seg);
+  const item = ITEMS[idx];
+
+  document.getElementById("rEmoji").textContent = item.emoji;
+  document.getElementById("rName").textContent = item.name;
+  document.getElementById("rDetail").innerHTML = item.detail;
+  document.getElementById("rTip").textContent = "💡 " + item.tip;
+  document.getElementById("result").style.display = "block";
+  document.getElementById("againBtn").style.display = "inline-block";
+  currentAction = item.emoji + " " + item.name;
+}
+
+// ===== 打卡 =====
+let currentAction = ""; // 当前转到的动作
+
+function updateCheckin() {
+  const data = loadData();
+  const today = todayStr();
+  const rec = data.days[today];
+  const done = !!(rec && rec.done);
+
+  // 连续打卡计算
+  let streak = 0;
+  const d = new Date();
+  for (let i = 0; i < 365; i++) {
+    const key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+    if (data.days[key] && data.days[key].done) { streak++; d.setDate(d.getDate() - 1); }
+    else break;
+  }
+  document.getElementById("streak").textContent = streak;
+
+  const btn = document.getElementById("checkinBtn");
+  btn.textContent = done ? "✅ 今天已练完" : "✅ 练完了";
+  btn.className = "btn small " + (done ? "done" : "");
+
+  const hint = document.getElementById("hint");
+  if (done) {
+    hint.textContent = "今日已打卡 ✅ 晚上想加练照练，组数自动累计";
+  } else {
+    hint.textContent = "20分钟响铃自动打卡 · 也可手动点";
+  }
+
+  // 日志（最近7天）
+  const log = document.getElementById("log");
+  log.innerHTML = "";
+  const keys = Object.keys(data.days).sort().reverse().slice(0, 7);
+  if (keys.length === 0) { log.innerHTML = "<div>还没有打卡记录，今晚是第一晚</div>"; }
+  else {
+    keys.forEach(k => {
+      const rec = data.days[k];
+      const label = dayLabel(new Date(k + "T00:00:00"));
+      const sessions = (rec.sessions || []).length;
+      const summary = rec.done
+        ? (sessions > 0 ? "✅ 练完" + sessions + "组" : "✅ 打卡")
+        : (sessions > 0 ? "⏳ 练了" + sessions + "组未打卡" : "—");
+      log.innerHTML += "<div><span class='date'>" + label + "</span><span>" + summary + "</span></div>";
+    });
+  }
+}
+
+// "这组练完" → 记录并自动转下一个
+document.getElementById("againBtn").addEventListener("click", function() {
+  const data = loadData();
+  const today = todayStr();
+  if (!data.days[today]) data.days[today] = { sessions: [], done: false };
+  if (currentAction) {
+    data.days[today].sessions.push(currentAction);
+  }
+  saveData(data);
+  updateCheckin();
+  updateStats();
+  spinWheel(); // 自动转下一个
+});
+
+// 统计：今日组数 / 本周天数 / 本周组数 / 累计天数
+function updateStats() {
+  const data = loadData();
+  const days = data.days || {};
+  const now = new Date();
+
+  // 本周起点：周一
+  const day = now.getDay(); // 0=周日
+  const diff = (day === 0 ? 6 : day - 1);
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - diff);
+  monday.setHours(0, 0, 0, 0);
+
+  function keyOf(d) {
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  const todayKey = keyOf(now);
+  const mondayKey = keyOf(monday);
+
+  let todayGroups = 0, weekDays = 0, weekGroups = 0, totalDays = 0;
+
+  Object.keys(days).forEach(k => {
+    const rec = days[k];
+    const groups = (rec.sessions || []).length;
+    const isDone = !!rec.done;
+    if (!isDone && groups === 0) return; // 空记录不算
+
+    if (k === todayKey) todayGroups += groups;
+
+    // 本周（从周一起）
+    const kTime = new Date(k + "T00:00:00");
+    if (kTime >= monday) {
+      weekDays++;
+      weekGroups += groups;
+    }
+
+    totalDays++;
+  });
+
+  document.getElementById("statToday").textContent = todayGroups;
+  document.getElementById("statWeek").textContent = weekDays;
+  document.getElementById("statWeekGroups").textContent = weekGroups;
+  document.getElementById("statTotal").textContent = totalDays;
+
+  // 进度提示
+  const goalText = document.getElementById("statsSub");
+  const todayRec = days[todayKey];
+  const doneToday = !!(todayRec && todayRec.done);
+  if (doneToday) {
+    goalText.innerHTML = "今日已练 <b>" + todayGroups + "</b> 组 · 本周 <b>" + weekDays + "</b> 天 · 继续加油";
+  } else if (todayGroups > 0) {
+    goalText.innerHTML = "今日已练 <b>" + todayGroups + "</b> 组 · 还没打卡，响铃或点按钮收工";
+  } else {
+    goalText.innerHTML = "今天还没练 · 转一把就开始了";
+  }
+}
+
+// ===== 动作榜：每种动作练了多少次，按周/月/全部 =====
+let distRange = "week";
+
+function rangeStart() {
+  const now = new Date();
+  if (distRange === "week") {
+    const day = now.getDay();
+    const diff = (day === 0 ? 6 : day - 1);
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - diff);
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  }
+  if (distRange === "month") {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  return new Date(2000, 0, 1); // 全部
+}
+
+function updateDist() {
+  const data = loadData();
+  const days = data.days || {};
+  const start = rangeStart();
+  const counts = {};
+
+  Object.keys(days).forEach(k => {
+    const kTime = new Date(k + "T00:00:00");
+    if (kTime < start) return;
+    const rec = days[k];
+    if (!rec.done) return; // 未打卡不算
+    (rec.sessions || []).forEach(s => {
+      counts[s] = (counts[s] || 0) + 1;
+    });
+  });
+
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const list = document.getElementById("distList");
+  const labelMap = { week: "本周", month: "本月", all: "全部" };
+  document.getElementById("distRangeLabel").textContent = labelMap[distRange];
+
+  if (entries.length === 0) {
+    list.innerHTML = "<div class='dist-empty'>这个时间段还没练过，转一把就有了</div>";
+    return;
+  }
+  const max = entries[0][1];
+  list.innerHTML = entries.map(([name, cnt]) => {
+    const pct = Math.round((cnt / max) * 100);
+    return "<div class='dist-row'><div class='dist-name'>" + name + "</div>" +
+      "<div class='dist-bar-wrap'><div class='dist-bar' style='width:" + pct + "%'></div></div>" +
+      "<div class='dist-cnt'>" + cnt + "</div></div>";
+  }).join("");
+}
+
+// tab 切换
+document.querySelectorAll(".dist-tab").forEach(tab => {
+  tab.addEventListener("click", function() {
+    document.querySelectorAll(".dist-tab").forEach(t => t.classList.remove("active"));
+    this.classList.add("active");
+    distRange = this.getAttribute("data-range");
+    updateDist();
+  });
+});
+
+// 打卡（手动/自动共用，幂等：当天已打卡就不再重复记）
+function doCheckin() {
+  const data = loadData();
+  const today = todayStr();
+  if (!data.days[today]) data.days[today] = { sessions: [], done: false };
+  if (!data.days[today].done) {
+    // 最后一组如果还没点"完成"，打卡时也记上
+    if (currentAction && data.days[today].sessions[data.days[today].sessions.length - 1] !== currentAction) {
+      data.days[today].sessions.push(currentAction);
+    }
+    data.days[today].done = true;
+    saveData(data);
+  }
+  updateCheckin();
+  updateStats();
+}
+
+document.getElementById("checkinBtn").addEventListener("click", doCheckin);
+const autoCheckin = doCheckin;
+
+document.getElementById("mainBtn").addEventListener("click", spinWheel);
+document.getElementById("spinBtn").addEventListener("click", spinWheel);
+document.getElementById("againBtn").addEventListener("click", spinWheel);
+
+// ===== 20分钟计时器 =====
+const TOTAL_SECONDS = 20 * 60;
+let remaining = TOTAL_SECONDS;
+let timerInterval = null;
+let timerRunning = false;
+
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById("timerDisplay");
+  el.textContent = formatTime(remaining);
+  el.classList.toggle("low", remaining <= 60);
+}
+
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [880, 1100, 880, 1100];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = "square";
+      const t = ctx.currentTime + i * 0.35;
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      osc.start(t);
+      osc.stop(t + 0.32);
+    });
+  } catch(e) { /* 无音频环境就算了 */ }
+}
+
+document.getElementById("timerStart").addEventListener("click", function() {
+  if (!timerRunning) {
+    timerRunning = true;
+    this.textContent = "⏸ 暂停";
+    this.classList.add("running");
+    document.getElementById("timerReset").style.display = "inline-block";
+    timerInterval = setInterval(() => {
+      remaining--;
+      updateTimerDisplay();
+      if (remaining <= 0) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        timerRunning = false;
+        this.textContent = "✅ 时间到！已自动打卡";
+        this.classList.remove("running");
+        beep();
+        autoCheckin(); // 响铃自动打卡
+      }
+    }, 1000);
+  } else {
+    timerRunning = false;
+    clearInterval(timerInterval);
+    timerInterval = null;
+    this.textContent = "▶ 继续";
+    this.classList.remove("running");
+  }
+});
+
+document.getElementById("timerReset").addEventListener("click", function() {
+  timerRunning = false;
+  clearInterval(timerInterval);
+  timerInterval = null;
+  remaining = TOTAL_SECONDS;
+  updateTimerDisplay();
+  const startBtn = document.getElementById("timerStart");
+  startBtn.textContent = "▶ 开始计时";
+  startBtn.classList.remove("running");
+  this.style.display = "none";
+});
+
+// ===== 初始化 =====
+drawWheel();
+updateCheckin();
+updateStats();
+updateDist();
+updateGoal();
+drawWeightChart();
+</script>
+</body>
+</html>
