@@ -469,16 +469,33 @@ function dayLabel(ts) {
 // ===== 轮盘绘制 =====
 const canvas = document.getElementById("wheel");
 const ctx = canvas.getContext("2d");
-const N = ITEMS.length;
 const colors = ["#4f46e5","#7c3aed","#9333ea","#a855f7","#6366f1","#8b5cf6","#6d28d9","#7e22ce","#5b21b6","#4338ca","#6d28d9","#4f46e5"];
 let currentAngle = 0;
 let spinning = false;
+let currentItems = ITEMS; // 当前轮盘上的动作（今日未练的）
+let roundReset = false;   // 今日全练过一轮，重开新一轮
+
+function todayDoneNames() {
+  const data = loadData();
+  const today = todayStr();
+  const rec = data.days[today];
+  if (!rec || !rec.sessions || rec.sessions.length === 0) return new Set();
+  return new Set(rec.sessions.map(s => s.substring(s.indexOf(" ") + 1)));
+}
+
+function refreshItems() {
+  const done = todayDoneNames();
+  const avail = ITEMS.filter(i => !done.has(i.name));
+  roundReset = avail.length === 0;
+  currentItems = roundReset ? ITEMS : avail;
+}
 
 function drawWheel() {
   const cx = 150, cy = 150, r = 145;
-  const seg = (Math.PI * 2) / N;
+  const n = currentItems.length;
+  const seg = (Math.PI * 2) / n;
   ctx.clearRect(0, 0, 300, 300);
-  for (let i = 0; i < N; i++) {
+  for (let i = 0; i < n; i++) {
     const start = currentAngle + i * seg;
     const end = start + seg;
     ctx.beginPath();
@@ -498,7 +515,7 @@ function drawWheel() {
     ctx.textAlign = "right";
     ctx.fillStyle = "#fff";
     ctx.font = "bold 13px sans-serif";
-    ctx.fillText(ITEMS[i].emoji + " " + ITEMS[i].name, r - 14, 4);
+    ctx.fillText(currentItems[i].emoji + " " + currentItems[i].name, r - 14, 4);
     ctx.restore();
   }
 }
@@ -506,6 +523,7 @@ function drawWheel() {
 function spinWheel() {
   if (spinning) return;
   spinning = true;
+  refreshItems(); // 转之前刷新：剔除今日已练
   document.getElementById("mainBtn").style.display = "none";
   document.getElementById("againBtn").style.display = "none";
   document.getElementById("result").style.display = "none";
@@ -532,18 +550,24 @@ function spinWheel() {
 
 function showResult() {
   // 指针在顶部(270度=3/4圈)，找指针对应的扇形
-  const seg = (Math.PI * 2) / N;
+  const n = currentItems.length;
+  const seg = (Math.PI * 2) / n;
   // 指针方向：正上方 = -PI/2
   const pointerAngle = -Math.PI / 2;
   let normalized = (pointerAngle - currentAngle) % (Math.PI * 2);
   if (normalized < 0) normalized += Math.PI * 2;
   const idx = Math.floor(normalized / seg);
-  const item = ITEMS[idx];
+  const item = currentItems[idx];
 
   document.getElementById("rEmoji").textContent = item.emoji;
   document.getElementById("rName").textContent = item.name;
   document.getElementById("rDetail").innerHTML = item.detail;
-  document.getElementById("rTip").textContent = "💡 " + item.tip;
+  // 今日还剩几个（重开一轮时显示全部）
+  const remain = roundReset ? ITEMS.length : n;
+  const remainTip = roundReset
+    ? "🎉 今天全部练过一轮了，新的一轮走起！"
+    : "今日还剩 " + remain + " 个动作没练";
+  document.getElementById("rTip").textContent = "💡 " + item.tip + " · " + remainTip;
   document.getElementById("result").style.display = "block";
   // 两个按钮并存：练完=记录计数+转下一个；开盲盒=不记录，重抽
   document.getElementById("againBtn").style.display = "inline-block";
@@ -842,6 +866,7 @@ if (!storageOK) {
   warn.innerHTML = "⚠️ 当前浏览器禁止本地存储（Safari 打开本地文件常见），打卡和体重数据 <b>无法保存</b>。<br>建议：点分享按钮 → 添加到主屏幕，或用 Chrome/Safari 通过 http 方式打开。";
   document.body.prepend(warn);
 }
+refreshItems();
 drawWheel();
 updateCheckin();
 updateStats();
