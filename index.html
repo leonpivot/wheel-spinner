@@ -21,7 +21,7 @@
 
   /* 轮盘 */
   .wheel-wrap { position: relative; width: 300px; height: 300px; margin: 10px auto 30px; }
-  canvas { width: 300px; height: 300px; border-radius: 50%; box-shadow: 0 0 30px rgba(99,102,241,.25); }
+  #wheel { width: 300px; height: 300px; border-radius: 50%; box-shadow: 0 0 30px rgba(99,102,241,.25); }
   .pointer {
     position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
     width: 0; height: 0;
@@ -130,6 +130,10 @@
   .goal-main b { color: #fbbf24; }
   .goal-detail { margin-top: 4px; font-size: 13px; color: #9ca3af; }
   .goal-detail b { color: #fbbf24; }
+  .goal-plan { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #2a2f45; font-size: 13px; color: #9ca3af; line-height: 1.6; }
+  .goal-plan b { color: #fbbf24; }
+  .goal-plan .ahead { color: #4ade80; font-weight: 700; }
+  .goal-plan .behind { color: #ff5c5c; font-weight: 700; }
   .goal-actions { margin-top: 10px; }
   .weight-btn { background: #37415e; }
   .weight-btn:hover { background: #4f46e5; }
@@ -177,6 +181,7 @@
   <div class="goal" id="goal">
     <div class="goal-main" id="goalMain"></div>
     <div class="goal-detail" id="goalDetail"></div>
+    <div class="goal-plan" id="goalPlan"></div>
     <div class="goal-actions">
       <button class="btn small weight-btn" id="weightBtn">⚖️ 记录体重</button>
     </div>
@@ -274,7 +279,22 @@ const GOAL = {
   target: 150,    // 目标体重（斤）
   date: "2027-01-01"
 };
+// ===== 线性计划锚点：9/1 166.4 起，按天平均降到目标日 =====
+const PLAN = {
+  startDate: "2026-09-01",
+  startWeight: 166.4
+};
 const W_KEY = "yun_dong_lun_pan_weight_v1";
+
+function dayDiff(a, b) {
+  return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+}
+// 按线性平均，今天应到的体重
+function expectedToday() {
+  const total = dayDiff(PLAN.startDate, GOAL.date);
+  const elapsed = dayDiff(PLAN.startDate, todayKey());
+  return PLAN.startWeight - (PLAN.startWeight - GOAL.target) / total * elapsed;
+}
 
 function loadWeights() {
   try { return JSON.parse(safeGet(W_KEY)) || {}; }
@@ -311,6 +331,25 @@ function updateGoal() {
   const round1 = v => Math.round(v * 10) / 10;
   main.innerHTML = "🎯 <b>" + round1(cur) + "斤</b> → <b>" + GOAL.target + "斤</b>";
   detail.innerHTML = "还差 <b>" + round1(gap) + "</b> 斤 · 还有 <b>" + left + "</b> 天（" + GOAL.date + "）";
+
+  // 线性计划：今天应到多少斤
+  const plan = document.getElementById("goalPlan");
+  if (plan) {
+    const exp = round1(expectedToday());
+    const weights = loadWeights();
+    const keys = Object.keys(weights).sort();
+    let html = "📏 按计划今天应到 <b>" + exp + "斤</b>";
+    if (keys.length > 0) {
+      const latest = weights[keys[keys.length - 1]];
+      const diff = round1(latest - exp);
+      if (diff <= 0) {
+        html += " · 你 <span class='ahead'>领先 " + Math.abs(diff) + "斤</span>";
+      } else {
+        html += " · 你 <span class='behind'>落后 " + diff + "斤</span>";
+      }
+    }
+    plan.innerHTML = html;
+  }
 }
 
 // 记录体重
