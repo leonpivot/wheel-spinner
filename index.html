@@ -510,7 +510,7 @@ function dayLabel(ts) {
 // ===== 轮盘绘制 =====
 const canvas = document.getElementById("wheel");
 const ctx = canvas.getContext("2d");
-const colors = ["#4f46e5","#7c3aed","#9333ea","#a855f7","#6366f1","#8b5cf6","#6d28d9","#7e22ce","#5b21b6","#4338ca","#6d28d9","#4f46e5"];
+const colors = ["#4f46e5","#7c3aed","#9333ea","#a855f7","#6366f1","#8b5cf6","#6d28d9","#7e22ce","#5b21b6","#4338ca","#db2777","#ea580c","#059669","#2563eb"];
 let currentAngle = 0;
 let spinning = false;
 let currentItems = ITEMS; // 当前轮盘上的动作（今日未练的）
@@ -536,6 +536,8 @@ function drawWheel() {
   const n = currentItems.length;
   const seg = (Math.PI * 2) / n;
   ctx.clearRect(0, 0, 300, 300);
+  // 格数多时字号自适应，避免文字挤出扇区
+  const fs = n >= 13 ? 10 : (n >= 10 ? 12 : 13);
   for (let i = 0; i < n; i++) {
     const start = currentAngle + i * seg;
     const end = start + seg;
@@ -549,14 +551,14 @@ function drawWheel() {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 文字
+    // 文字（径向）
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(start + seg / 2);
     ctx.textAlign = "right";
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 13px sans-serif";
-    ctx.fillText(currentItems[i].emoji + " " + currentItems[i].name, r - 14, 4);
+    ctx.font = "bold " + fs + "px sans-serif";
+    ctx.fillText(currentItems[i].emoji + " " + currentItems[i].name, r - 10, 4);
     ctx.restore();
   }
 }
