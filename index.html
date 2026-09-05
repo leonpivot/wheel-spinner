@@ -551,14 +551,16 @@ function drawWheel() {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 文字（径向，emoji+名字；emoji渲染宽的手机上起点已内收保不出格）
+    // 文字（径向；先量宽，手机端emoji渲染过宽就自动丢图标只留汉字，保不出格）
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(start + seg / 2);
     ctx.textAlign = "right";
     ctx.fillStyle = "#fff";
     ctx.font = "bold " + fs + "px sans-serif";
-    ctx.fillText(currentItems[i].emoji + " " + currentItems[i].name, r - 7, 4);
+    const label = currentItems[i].name;
+    const withIcon = currentItems[i].emoji + " " + label;
+    ctx.fillText(ctx.measureText(withIcon).width > 100 ? label : withIcon, r - 7, 4);
     ctx.restore();
   }
 }
