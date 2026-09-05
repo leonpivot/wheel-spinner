@@ -881,21 +881,32 @@ function cardSeen() { try { return JSON.parse(safeGet(CARD_SEEN_KEY)) || []; } c
 function saveCards(c) { safeSet(CARD_CACHE_KEY, JSON.stringify(c.slice(0, 40))); }
 function saveSeen(s) { safeSet(CARD_SEEN_KEY, JSON.stringify(s.slice(-800))); }
 
-// 随机词 + 随机页拉一批，过滤掉看过的
+// 混合拉取：一次把全部词都拉一点再洗牌，避免一整批全是同一个主题
 function fetchCards(n) {
-  const q = CARD_KEYWORDS[Math.floor(Math.random() * CARD_KEYWORDS.length)];
-  const page = 1 + Math.floor(Math.random() * 5); // 1-5页，热门词必出货
-  return fetch("https://api.pexels.com/v1/search?query=" + encodeURIComponent(q) +
-      "&per_page=" + n + "&page=" + page + "&orientation=portrait", {
-    headers: { "Authorization": PEXELS_KEY }
-  }).then(function(r) {
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.json();
-  }).then(function(d) {
+  const perWord = Math.max(2, Math.ceil(n / CARD_KEYWORDS.length)); // 每词至少 2 张
+  const jobs = CARD_KEYWORDS.map(function(q) {
+    const page = 1 + Math.floor(Math.random() * 5); // 每词随机 1-5 页
+    return fetch("https://api.pexels.com/v1/search?query=" + encodeURIComponent(q) +
+        "&per_page=" + perWord + "&page=" + page + "&orientation=portrait", {
+      headers: { "Authorization": PEXELS_KEY }
+    }).then(function(r) { return r.ok ? r.json() : null; });
+  });
+  return Promise.all(jobs).then(function(results) {
     const seen = new Set(cardSeen());
-    const photos = d.photos || [];
+    let photos = [];
+    results.forEach(function(d) {
+      if (d && d.photos) {
+        // 每词限量，防同一摄影师连拍刷屏
+        photos = photos.concat(d.photos.slice(0, perWord));
+      }
+    });
+    // 洗牌：主题交错开，别连续几张全是黑丝
+    for (let i = photos.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = photos[i]; photos[i] = photos[j]; photos[j] = t;
+    }
     let fresh = photos.filter(function(p) { return !seen.has(String(p.id)); });
-    if (fresh.length === 0) fresh = photos; // 这页全看过也照收，保证有货
+    if (fresh.length === 0) fresh = photos; // 全看过也照收，保证有货
     return fresh.map(function(p) {
       return {
         id: String(p.id),
