@@ -918,15 +918,28 @@ function fetchCards(n) {
   });
 }
 
+let cardFetching = false; // 补货锁：防止多处同时拉货重复
+
 // 缓存不够就补一批（拉一批缓存一批，翻牌不卡）
 function ensureCards() {
   if (cardCache().length >= 4) return Promise.resolve(cardCache());
-  const need = 12;
-  return fetchCards(need).then(function(fresh) {
+  if (cardFetching) return Promise.resolve(cardCache()); // 已在拉货，等它落地就行
+  cardFetching = true;
+  return fetchCards(12).then(function(fresh) {
+    cardFetching = false;
     const merged = cardCache().concat(fresh);
     saveCards(merged);
     return merged;
+  }).catch(function(e) {
+    cardFetching = false;
+    throw e;
   });
+}
+
+// 静默补货：后台拉一批，不显示任何 loading，不打断当前翻牌
+function silentRefill() {
+  if (cardCache().length >= 8 || cardFetching) return;
+  ensureCards().catch(function() { /* 失败下轮再补，翻牌时有兜底 */ });
 }
 
 let cardBusy = false;
@@ -1032,6 +1045,7 @@ function flipCard() {
     }
     renderCard(card);
     cardBusy = false;
+    silentRefill(); // 翻掉一张就看看库存，低于线后台悄悄补，不打断
   }).catch(function() {
     loading.textContent = "网络抽风拉不到图，下组再翻";
     cardBusy = false;
@@ -1093,6 +1107,7 @@ function beep() {
 document.getElementById("timerStart").addEventListener("click", function() {
   if (!timerRunning) {
     timerRunning = true;
+    silentRefill(); // 开练了：后台先把翻牌图补满，练完奖励秒开不等
     this.textContent = "⏸ 暂停";
     this.classList.add("running");
     document.getElementById("timerReset").style.display = "inline-block";
