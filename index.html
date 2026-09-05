@@ -551,14 +551,14 @@ function drawWheel() {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 文字（径向，只画汉字名——emoji在手机端渲染宽度不稳会撑出格子）
+    // 文字（径向，emoji+名字；emoji渲染宽的手机上起点已内收保不出格）
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(start + seg / 2);
     ctx.textAlign = "right";
     ctx.fillStyle = "#fff";
     ctx.font = "bold " + fs + "px sans-serif";
-    ctx.fillText(currentItems[i].name, r - 10, 4);
+    ctx.fillText(currentItems[i].emoji + " " + currentItems[i].name, r - 7, 4);
     ctx.restore();
   }
 }
