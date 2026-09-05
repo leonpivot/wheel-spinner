@@ -536,8 +536,8 @@ function drawWheel() {
   const n = currentItems.length;
   const seg = (Math.PI * 2) / n;
   ctx.clearRect(0, 0, 300, 300);
-  // 格数多时字号自适应，避免文字挤出扇区
-  const fs = n >= 13 ? 10 : (n >= 10 ? 12 : 13);
+  // 格数多时字号自适应（只画汉字名，宽度稳定）
+  const fs = n >= 13 ? 11 : (n >= 10 ? 12 : 13);
   for (let i = 0; i < n; i++) {
     const start = currentAngle + i * seg;
     const end = start + seg;
@@ -551,14 +551,14 @@ function drawWheel() {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 文字（径向）
+    // 文字（径向，只画汉字名——emoji在手机端渲染宽度不稳会撑出格子）
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(start + seg / 2);
     ctx.textAlign = "right";
     ctx.fillStyle = "#fff";
     ctx.font = "bold " + fs + "px sans-serif";
-    ctx.fillText(currentItems[i].emoji + " " + currentItems[i].name, r - 10, 4);
+    ctx.fillText(currentItems[i].name, r - 10, 4);
     ctx.restore();
   }
 }
