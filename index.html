@@ -172,6 +172,36 @@
   .timer-btns .btn.small { padding: 8px 20px; font-size: 14px; }
   .btn.running { background: #b45309; }
   .btn.running:hover { background: #d97706; }
+
+  /* 练完翻牌 */
+  .card-mask {
+    display: none; position: fixed; inset: 0; z-index: 999;
+    background: rgba(5,6,10,.86); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center; flex-direction: column; padding: 20px;
+  }
+  .card-mask.show { display: flex; }
+  .card-box {
+    background: #1a1d2a; border: 1px solid #3b3f5c; border-radius: 20px;
+    padding: 14px 14px 12px; max-width: 400px; width: 100%;
+    box-shadow: 0 10px 60px rgba(0,0,0,.7); text-align: center;
+    animation: cardIn .35s ease;
+  }
+  @keyframes cardIn {
+    from { transform: scale(.82) translateY(14px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  .card-title { font-size: 15px; color: #fbbf24; font-weight: 700; letter-spacing: 2px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+  .card-timer { font-size: 14px; color: #fbbf24; background: #12141d; border: 1px solid #2a2f45; border-radius: 8px; padding: 2px 10px; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+  .card-timer.low { color: #ff5c5c; border-color: #7f1d1d; animation: pulse 1s infinite; }
+  .card-img-wrap { position: relative; width: 100%; border-radius: 14px; overflow: hidden; background: #000; min-height: 200px; }
+  .card-img-wrap img { width: 100%; max-height: 62vh; object-fit: contain; display: block; }
+  .card-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 14px; background: #12141d; }
+  .card-credit { font-size: 11px; color: #6b7280; margin: 8px 0 2px; word-break: break-all; }
+  .card-credit a { color: #8b8fa3; text-decoration: none; }
+  .card-btns { display: flex; gap: 10px; margin-top: 8px; }
+  .card-btns .btn { flex: 1; padding: 11px 0; font-size: 15px; margin-top: 0; }
+  .btn.flip-again { background: #db2777; }
+  .btn.flip-again:hover { background: #ec4899; }
 </style>
 </head>
 <body>
@@ -254,6 +284,22 @@
     <h3>📉 体重趋势</h3>
     <canvas id="weightChart" width="680" height="280"></canvas>
     <div class="chart-empty" id="chartEmpty">还没记录体重 · 点上面按钮记一笔</div>
+  </div>
+
+  <!-- 练完翻牌 -->
+  <div class="card-mask" id="cardMask">
+    <div class="card-box">
+      <div class="card-title">🎴 练完翻牌 · 这组干得漂亮 <span class="card-timer" id="cardTimer">⏳ 30s</span></div>
+      <div class="card-img-wrap" id="cardImgWrap">
+        <div class="card-loading" id="cardLoading">翻牌中…</div>
+        <img id="cardImg" alt="" style="display:none">
+      </div>
+      <div class="card-credit" id="cardCredit"></div>
+      <div class="card-btns">
+        <button class="btn flip-again" id="cardAgain">🎲 再翻一张</button>
+        <button class="btn secondary" id="cardClose">收下走人</button>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -680,6 +726,7 @@ document.getElementById("againBtn").addEventListener("click", function() {
   saveData(data);
   updateCheckin();
   updateStats();
+  flipCard(); // 练完翻牌：随机奖励一张
   spinWheel(); // 自动转下一个
 });
 
@@ -823,6 +870,173 @@ function doCheckin() {
 document.getElementById("checkinBtn").addEventListener("click", doCheckin);
 const autoCheckin = doCheckin;
 
+// ===== 练完翻牌（Pexels 随机图库奖励）=====
+const PEXELS_KEY = "uoe50TUPopXPPhIUyYYfqZFCC5I6pXn2lqEEtMAPE9DCVGen3AVKB0Ha";
+const CARD_KEYWORDS = ["woman abs", "woman legs", "woman leggings", "woman high heels", "black nylons"];
+const CARD_CACHE_KEY = "yun_dong_lun_pan_cards_v1";
+const CARD_SEEN_KEY = "yun_dong_lun_pan_cards_seen_v1";
+
+function cardCache() { try { return JSON.parse(safeGet(CARD_CACHE_KEY)) || []; } catch(e) { return []; } }
+function cardSeen() { try { return JSON.parse(safeGet(CARD_SEEN_KEY)) || []; } catch(e) { return []; } }
+function saveCards(c) { safeSet(CARD_CACHE_KEY, JSON.stringify(c.slice(0, 40))); }
+function saveSeen(s) { safeSet(CARD_SEEN_KEY, JSON.stringify(s.slice(-800))); }
+
+// 随机词 + 随机页拉一批，过滤掉看过的
+function fetchCards(n) {
+  const q = CARD_KEYWORDS[Math.floor(Math.random() * CARD_KEYWORDS.length)];
+  const page = 1 + Math.floor(Math.random() * 5); // 1-5页，热门词必出货
+  return fetch("https://api.pexels.com/v1/search?query=" + encodeURIComponent(q) +
+      "&per_page=" + n + "&page=" + page + "&orientation=portrait", {
+    headers: { "Authorization": PEXELS_KEY }
+  }).then(function(r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }).then(function(d) {
+    const seen = new Set(cardSeen());
+    const photos = d.photos || [];
+    let fresh = photos.filter(function(p) { return !seen.has(String(p.id)); });
+    if (fresh.length === 0) fresh = photos; // 这页全看过也照收，保证有货
+    return fresh.map(function(p) {
+      return {
+        id: String(p.id),
+        url: p.src.original + "?auto=compress&cs=tinysrgb&w=800",
+        credit: p.photographer || "",
+        page: p.url || "https://www.pexels.com"
+      };
+    });
+  });
+}
+
+// 缓存不够就补一批（拉一批缓存一批，翻牌不卡）
+function ensureCards() {
+  if (cardCache().length >= 4) return Promise.resolve(cardCache());
+  const need = 12;
+  return fetchCards(need).then(function(fresh) {
+    const merged = cardCache().concat(fresh);
+    saveCards(merged);
+    return merged;
+  });
+}
+
+let cardBusy = false;
+function popCard() {
+  const c = cardCache();
+  if (c.length === 0) return null;
+  const seen = cardSeen();
+  let i = c.findIndex(function(x) { return seen.indexOf(x.id) < 0; });
+  if (i < 0) i = 0; // 全看过也翻，重新来
+  const card = c[i];
+  saveCards(c.slice(0, i).concat(c.slice(i + 1)));
+  seen.push(card.id);
+  saveSeen(seen);
+  return card;
+}
+
+let maskOpenAt = 0;
+let cardTimerInterval = null;  // 倒计时每秒 tick
+let cardAutoInterval = null;   // 每 6s 自动翻一张
+let cardCountdown = 30;
+
+function showCardModal() {
+  maskOpenAt = Date.now();
+  document.getElementById("cardMask").classList.add("show");
+  startCardTimers(); // 打开弹窗 = 奖励时间开始：30s 倒计时 + 每 6s 自动换图
+}
+
+function hideCardModal() {
+  clearCardTimers();
+  document.getElementById("cardMask").classList.remove("show");
+}
+
+function updateCardTimer() {
+  const el = document.getElementById("cardTimer");
+  if (!el) return;
+  el.textContent = "⏳ " + cardCountdown + "s";
+  el.classList.toggle("low", cardCountdown <= 5);
+}
+
+function startCardTimers() {
+  clearCardTimers();
+  cardCountdown = 30;
+  updateCardTimer();
+  cardTimerInterval = setInterval(function() {
+    cardCountdown--;
+    if (cardCountdown <= 0) { hideCardModal(); return; } // 到点自动收
+    updateCardTimer();
+  }, 1000);
+  cardAutoInterval = setInterval(function() { flipCard(); }, 6000); // 每 6s 自动换
+}
+
+function clearCardTimers() {
+  if (cardTimerInterval) { clearInterval(cardTimerInterval); cardTimerInterval = null; }
+  if (cardAutoInterval) { clearInterval(cardAutoInterval); cardAutoInterval = null; }
+}
+
+// 手动"再翻一张"后重排 6s 自动节奏，别刚手动翻完又立刻自动翻
+function resetAutoFlipTimer() {
+  if (cardAutoInterval) { clearInterval(cardAutoInterval); cardAutoInterval = null; }
+  if (document.getElementById("cardMask").classList.contains("show")) {
+    cardAutoInterval = setInterval(function() { flipCard(); }, 6000);
+  }
+}
+
+function renderCard(card) {
+  const img = document.getElementById("cardImg");
+  const loading = document.getElementById("cardLoading");
+  const credit = document.getElementById("cardCredit");
+  img.style.display = "none";
+  loading.style.display = "flex";
+  loading.textContent = "开牌…";
+  img.onload = function() { loading.style.display = "none"; img.style.display = "block"; };
+  img.onerror = function() {
+    // 图挂了：缓存里这张已被踢掉，有货就换一张，没货就认栽
+    if (cardCache().length > 0) { flipCard(); }
+    else { loading.textContent = "图源抽风，下组再翻"; cardBusy = false; }
+  };
+  img.src = card.url;
+  credit.innerHTML = "Photo by <a href=\"" + card.page + "\" target=\"_blank\" rel=\"noopener\">" +
+    (card.credit || "Pexels") + "</a> on Pexels";
+}
+
+function flipCard() {
+  if (cardBusy) return;
+  cardBusy = true;
+  // 首次打开才启动倒计时；弹窗已开时（自动/手动换图）只换图，不重置奖励时间
+  if (!document.getElementById("cardMask").classList.contains("show")) {
+    showCardModal();
+  }
+  const loading = document.getElementById("cardLoading");
+  const img = document.getElementById("cardImg");
+  const credit = document.getElementById("cardCredit");
+  img.style.display = "none";
+  loading.style.display = "flex";
+  loading.textContent = "翻牌中…";
+  credit.innerHTML = "";
+  ensureCards().then(function() {
+    const card = popCard();
+    if (!card) {
+      loading.textContent = "图源没货，下组再翻";
+      cardBusy = false;
+      return;
+    }
+    renderCard(card);
+    cardBusy = false;
+  }).catch(function() {
+    loading.textContent = "网络抽风拉不到图，下组再翻";
+    cardBusy = false;
+  });
+}
+
+document.getElementById("cardAgain").addEventListener("click", function() {
+  if (cardBusy) return;
+  flipCard();
+  resetAutoFlipTimer(); // 手动翻完，6s 自动节奏从这刻重算
+});
+document.getElementById("cardClose").addEventListener("click", hideCardModal);
+document.getElementById("cardMask").addEventListener("click", function(e) {
+  if (e.target === this && Date.now() - maskOpenAt > 400) hideCardModal();
+});
+
 document.getElementById("mainBtn").addEventListener("click", spinWheel);
 document.getElementById("spinBtn").addEventListener("click", spinWheel);
 document.getElementById("againBtn").addEventListener("click", spinWheel);
@@ -906,6 +1120,10 @@ document.getElementById("timerReset").addEventListener("click", function() {
 });
 
 // ===== 初始化 =====
+// 预取一批翻牌图缓存起来，练完第一组就能秒翻不转圈
+if (storageOK && "fetch" in window) {
+  ensureCards().catch(function() { /* 网络不通就算了，翻牌时再试 */ });
+}
 if (!storageOK) {
   const warn = document.createElement("div");
   warn.style.cssText = "background:#7c2d12;color:#fca5a5;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:14px;text-align:center;line-height:1.5;";
