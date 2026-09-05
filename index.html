@@ -263,16 +263,16 @@ const ITEMS = [
   { emoji: "🦵", name: "深蹲", detail: "做 <span class='highlight'>60个</span>，分4组，每组15个，组间休息45秒", tip: "膝盖别内扣，臀部向后坐" },
   { emoji: "💪", name: "弓步蹲", detail: "做 <span class='highlight'>48个</span>，分4组，每组12个（左右各6），组间休息45秒", tip: "前腿膝盖别超过脚尖，后腿膝盖接近地面" },
   { emoji: "🔥", name: "高抬腿", detail: "原地跑 <span class='highlight'>4组×40秒</span>，组间休息30秒", tip: "大腿抬到与地面平行，摆臂跟上" },
-  { emoji: "⛰️", name: "登山跑", detail: "做 <span class='highlight'>4组×40秒</span>，组间休息30秒", tip: "核心收紧，膝盖往胸口方向顶" },
+  { emoji: "⛰️", name: "登山跑", noIcon: true, detail: "做 <span class='highlight'>4组×40秒</span>，组间休息30秒", tip: "核心收紧，膝盖往胸口方向顶" },
   { emoji: "⚡", name: "波比跳", detail: "做 <span class='highlight'>30个</span>，分3组，每组10个，组间休息60秒，做不动就慢速", tip: "全场最狠，干完你就是爷" },
   { emoji: "🧘", name: "平板支撑", detail: "做 <span class='highlight'>3组×75秒</span>，组间休息45秒", tip: "臀部夹紧，别塌腰别撅屁股" },
   { emoji: "📐", name: "卷腹", detail: "做 <span class='highlight'>60个</span>，分4组，每组15个，组间休息30秒", tip: "脖子放松，用腹肌发力卷起" },
   { emoji: "🦶", name: "仰卧抬腿", detail: "做 <span class='highlight'>45个</span>，分3组，每组15个，组间休息30秒", tip: "下腹救星，腿别放到底" },
   { emoji: "🍑", name: "臀桥", detail: "做 <span class='highlight'>60个</span>，分4组，每组15个，组间休息30秒", tip: "顶到最高点停1秒，夹臀" },
-  { emoji: "🔀", name: "组合套餐", detail: "深蹲<span class='highlight'>15</span> + 卷腹<span class='highlight'>15</span> + 臀桥<span class='highlight'>15</span>，<span class='highlight'>循环4组</span>，组间休息60秒", tip: "三样全干完，今天你就赢了" },
+  { emoji: "🔀", name: "组合套餐", noIcon: true, detail: "深蹲<span class='highlight'>15</span> + 卷腹<span class='highlight'>15</span> + 臀桥<span class='highlight'>15</span>，<span class='highlight'>循环4组</span>，组间休息60秒", tip: "三样全干完，今天你就赢了" },
   { emoji: "🧱", name: "靠墙静蹲", detail: "背贴墙蹲 <span class='highlight'>4组×45秒</span>，组间休息45秒", tip: "大腿与地面平行，膝盖别超过脚尖，腿酸就对了" },
   { emoji: "↩️", name: "反向卷腹", detail: "做 <span class='highlight'>45个</span>，分3组，每组15个，组间休息30秒", tip: "膝盖收向胸口，臀部卷离地面那一下才算，慢下快收" },
-  { emoji: "✂️", name: "剪刀腿", detail: "双腿离地15厘米 <span class='highlight'>4组×30秒</span>，组间休息30秒", tip: "腿全程别碰地，交叉剪，下腹烧起来就对了" }
+  { emoji: "✂️", name: "剪刀腿", noIcon: true, detail: "双腿离地15厘米 <span class='highlight'>4组×30秒</span>，组间休息30秒", tip: "腿全程别碰地，交叉剪，下腹烧起来就对了" }
 ];
 
 // ===== 目标（可改） =====
@@ -559,8 +559,9 @@ function drawWheel() {
     ctx.fillStyle = "#fff";
     ctx.font = "bold " + fs + "px sans-serif";
     const label = currentItems[i].name;
-    const withIcon = currentItems[i].emoji + " " + label;
-    ctx.fillText(ctx.measureText(withIcon).width > 100 ? label : withIcon, r - 7, 4);
+    const full = currentItems[i].noIcon ? label : currentItems[i].emoji + " " + label;
+    // noIcon 的格子不带图标；其余格若手机端渲染过宽也自动丢图标保不出格
+    ctx.fillText(ctx.measureText(full).width > 100 ? label : full, r - 7, 4);
     ctx.restore();
   }
 }
