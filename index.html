@@ -878,16 +878,17 @@ const CARD_SEEN_KEY = "yun_dong_lun_pan_cards_seen_v1";
 
 function cardCache() { try { return JSON.parse(safeGet(CARD_CACHE_KEY)) || []; } catch(e) { return []; } }
 function cardSeen() { try { return JSON.parse(safeGet(CARD_SEEN_KEY)) || []; } catch(e) { return []; } }
-function saveCards(c) { safeSet(CARD_CACHE_KEY, JSON.stringify(c.slice(0, 40))); }
+function saveCards(c) { safeSet(CARD_CACHE_KEY, JSON.stringify(c.slice(0, 60))); }
 function saveSeen(s) { safeSet(CARD_SEEN_KEY, JSON.stringify(s.slice(-800))); }
 
 // 混合拉取：一次把全部词都拉一点再洗牌，避免一整批全是同一个主题
-function fetchCards(n) {
-  const perWord = Math.max(2, Math.ceil(n / CARD_KEYWORDS.length)); // 每词至少 2 张
+// perWord = 每个词拉几张（9 词 × 3 ≈ 27 张/批）
+function fetchCards(perWord) {
+  const per = Math.max(2, perWord || 2);
   const jobs = CARD_KEYWORDS.map(function(q) {
     const page = 1 + Math.floor(Math.random() * 5); // 每词随机 1-5 页
     return fetch("https://api.pexels.com/v1/search?query=" + encodeURIComponent(q) +
-        "&per_page=" + perWord + "&page=" + page + "&orientation=portrait", {
+        "&per_page=" + per + "&page=" + page + "&orientation=portrait", {
       headers: { "Authorization": PEXELS_KEY }
     }).then(function(r) { return r.ok ? r.json() : null; });
   });
@@ -897,7 +898,7 @@ function fetchCards(n) {
     results.forEach(function(d) {
       if (d && d.photos) {
         // 每词限量，防同一摄影师连拍刷屏
-        photos = photos.concat(d.photos.slice(0, perWord));
+        photos = photos.concat(d.photos.slice(0, per));
       }
     });
     // 洗牌：主题交错开，别连续几张全是黑丝
@@ -920,12 +921,13 @@ function fetchCards(n) {
 
 let cardFetching = false; // 补货锁：防止多处同时拉货重复
 
-// 缓存不够就补一批（拉一批缓存一批，翻牌不卡）
-function ensureCards() {
-  if (cardCache().length >= 4) return Promise.resolve(cardCache());
+// 补货：库存低于 minStock 就后台拉一批（每词3张≈27张/批）
+function ensureCards(minStock) {
+  const min = minStock || 12;
+  if (cardCache().length >= min) return Promise.resolve(cardCache());
   if (cardFetching) return Promise.resolve(cardCache()); // 已在拉货，等它落地就行
   cardFetching = true;
-  return fetchCards(12).then(function(fresh) {
+  return fetchCards(3).then(function(fresh) {
     cardFetching = false;
     const merged = cardCache().concat(fresh);
     saveCards(merged);
@@ -937,9 +939,10 @@ function ensureCards() {
 }
 
 // 静默补货：后台拉一批，不显示任何 loading，不打断当前翻牌
-function silentRefill() {
-  if (cardCache().length >= 8 || cardFetching) return;
-  ensureCards().catch(function() { /* 失败下轮再补，翻牌时有兜底 */ });
+// force=true（开始计时）：库存没到 30 就补满，练完第一组就有整场货
+function silentRefill(force) {
+  if (cardFetching) return;
+  ensureCards(force ? 30 : 12).catch(function() { /* 失败下轮再补，翻牌时有兜底 */ });
 }
 
 let cardBusy = false;
@@ -1036,7 +1039,7 @@ function flipCard() {
   loading.style.display = "flex";
   loading.textContent = "翻牌中…";
   credit.innerHTML = "";
-  ensureCards().then(function() {
+  ensureCards(4).then(function() {
     const card = popCard();
     if (!card) {
       loading.textContent = "图源没货，下组再翻";
@@ -1107,7 +1110,7 @@ function beep() {
 document.getElementById("timerStart").addEventListener("click", function() {
   if (!timerRunning) {
     timerRunning = true;
-    silentRefill(); // 开练了：后台先把翻牌图补满，练完奖励秒开不等
+    silentRefill(true); // 开练了：库存直接补满 30+，练完奖励秒开不等
     this.textContent = "⏸ 暂停";
     this.classList.add("running");
     document.getElementById("timerReset").style.display = "inline-block";
@@ -1148,7 +1151,7 @@ document.getElementById("timerReset").addEventListener("click", function() {
 // ===== 初始化 =====
 // 预取一批翻牌图缓存起来，练完第一组就能秒翻不转圈
 if (storageOK && "fetch" in window) {
-  ensureCards().catch(function() { /* 网络不通就算了，翻牌时再试 */ });
+  ensureCards(30).catch(function() { /* 网络不通就算了，翻牌时再试 */ });
 }
 if (!storageOK) {
   const warn = document.createElement("div");
