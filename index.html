@@ -882,13 +882,15 @@ function saveCards(c) { safeSet(CARD_CACHE_KEY, JSON.stringify(c.slice(0, 60)));
 function saveSeen(s) { safeSet(CARD_SEEN_KEY, JSON.stringify(s.slice(-800))); }
 
 // 混合拉取：一次把全部词都拉一点再洗牌，避免一整批全是同一个主题
-// perWord = 每个词拉几张（9 词 × 3 ≈ 27 张/批）
-function fetchCards(perWord) {
+// perWord = 每个词最终留几张（9 词 × 3 ≈ 27 张/批）
+// depth = 重试深度：整批撞上黑名单时换批重试，候选耗尽就释放一半黑名单
+function fetchCards(perWord, depth) {
   const per = Math.max(2, perWord || 2);
+  const d = depth || 0;
+  const page = 1 + Math.floor(Math.random() * 30); // 1-30页，候选空间大，不易撞车
   const jobs = CARD_KEYWORDS.map(function(q) {
-    const page = 1 + Math.floor(Math.random() * 5); // 每词随机 1-5 页
     return fetch("https://api.pexels.com/v1/search?query=" + encodeURIComponent(q) +
-        "&per_page=" + per + "&page=" + page + "&orientation=portrait", {
+        "&per_page=" + (per * 2) + "&page=" + page + "&orientation=portrait", {
       headers: { "Authorization": PEXELS_KEY }
     }).then(function(r) { return r.ok ? r.json() : null; });
   });
@@ -897,8 +899,15 @@ function fetchCards(perWord) {
     let photos = [];
     results.forEach(function(d) {
       if (d && d.photos) {
-        // 每词限量，防同一摄影师连拍刷屏
-        photos = photos.concat(d.photos.slice(0, per));
+        // 同一摄影师连拍只留第一张，防"看着一样"的兄弟图刷屏
+        const seenPg = {};
+        const uniq = d.photos.filter(function(p) {
+          const pid = p.photographer_id || p.id;
+          if (seenPg[pid]) return false;
+          seenPg[pid] = true;
+          return true;
+        });
+        photos = photos.concat(uniq.slice(0, per));
       }
     });
     // 洗牌：主题交错开，别连续几张全是黑丝
@@ -907,7 +916,15 @@ function fetchCards(perWord) {
       const t = photos[i]; photos[i] = photos[j]; photos[j] = t;
     }
     let fresh = photos.filter(function(p) { return !seen.has(String(p.id)); });
-    if (fresh.length === 0) fresh = photos; // 全看过也照收，保证有货
+    if (fresh.length === 0) {
+      if (d >= 3) return []; // 重试多轮还撞车，这次先空手回，下轮翻牌再补
+      if (d === 2) {
+        // 候选快薅光了：释放最老一半黑名单，让老图重新可抽
+        const s = cardSeen();
+        saveSeen(s.slice(Math.floor(s.length / 2)));
+      }
+      return fetchCards(perWord, d + 1); // 换批重试（换词换页）
+    }
     return fresh.map(function(p) {
       return {
         id: String(p.id),
