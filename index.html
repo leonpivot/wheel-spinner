@@ -951,20 +951,70 @@ function fetchCards(perWord, depth) {
 
 let cardFetching = false; // 补货锁：防止多处同时拉货重复
 
-// 补货：库存低于 minStock 就后台拉一批（每词3张≈27张/批）
+// ===== 精选池（姐人工筛的对味图，优先翻）=====
+const POOL_URL = "https://leonpivot.github.io/wheel-spinner/pool.json";
+let poolCards = null;       // 精选池（惰性加载，只拉一次）
+let poolExhausted = false;  // 池子翻完了，改走实时 API
+
+function loadPool() {
+  if (poolCards !== null) return Promise.resolve(poolCards);
+  return fetch(POOL_URL).then(function(r) { return r.ok ? r.json() : []; }).then(function(list) {
+    poolCards = (list || []).map(function(x) {
+      return {
+        id: "pool-" + String(x.id),
+        url: x.src + "?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=800",
+        credit: x.author || "",
+        page: x.page || "https://www.pexels.com"
+      };
+    });
+    return poolCards;
+  }).catch(function() { poolCards = []; return poolCards; });
+}
+
+// 池子补充：从精选池里挑没看过、不在黑名单的卡填库存
+function refillFromPool(min) {
+  if (poolExhausted || poolCards === null) return Promise.resolve([]);
+  const seen = cardSeen();
+  const blockedA = cardBlockedAuthors();
+  const avail = poolCards.filter(function(x) {
+    return seen.indexOf(x.id) < 0 && blockedA.indexOf(x.credit) < 0;
+  });
+  if (avail.length === 0) { poolExhausted = true; return Promise.resolve([]); }
+  for (let i = avail.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = avail[i]; avail[i] = avail[j]; avail[j] = t;
+  }
+  const take = avail.slice(0, Math.max(min, 30));
+  const merged = cardCache().concat(take);
+  saveCards(merged);
+  return Promise.resolve(merged);
+}
+
+// 补货：库存低于 minStock 就补——先吃精选池，池子空了再走实时 API
 function ensureCards(minStock) {
   const min = minStock || 12;
   if (cardCache().length >= min) return Promise.resolve(cardCache());
   if (cardFetching) return Promise.resolve(cardCache()); // 已在拉货，等它落地就行
   cardFetching = true;
-  return fetchCards(3).then(function(fresh) {
-    cardFetching = false;
-    const merged = cardCache().concat(fresh);
-    saveCards(merged);
-    return merged;
-  }).catch(function(e) {
-    cardFetching = false;
-    throw e;
+  return loadPool().then(function() {
+    return refillFromPool(min).then(function(merged) {
+      if (merged.length >= min) { cardFetching = false; return merged; }
+      // 池子不够 → 实时 API 兜底
+      return fetchCards(3).then(function(fresh) {
+        cardFetching = false;
+        const m2 = cardCache().concat(fresh);
+        saveCards(m2);
+        return m2;
+      }).catch(function(e) { cardFetching = false; throw e; });
+    });
+  }).catch(function() {
+    // 池子加载失败 → 直接实时 API
+    return fetchCards(3).then(function(fresh) {
+      cardFetching = false;
+      const m3 = cardCache().concat(fresh);
+      saveCards(m3);
+      return m3;
+    }).catch(function(e) { cardFetching = false; throw e; });
   });
 }
 
