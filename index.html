@@ -872,6 +872,16 @@ const autoCheckin = doCheckin;
 
 // ===== 练完翻牌（Pexels 随机图库奖励）=====
 const PEXELS_KEY = "uoe50TUPopXPPhIUyYYfqZFCC5I6pXn2lqEEtMAPE9DCVGen3AVKB0Ha";
+
+// ===== 作者黑名单：这些作者的图不对味，拉图直接过滤 =====
+// 内置名单（姐维护）+ localStorage 可追加（KEY: cardBlockedAuthors）
+const CARD_BLOCKED_AUTHORS = ["Ab Pixels"];
+function cardBlockedAuthors() {
+  try {
+    const extra = JSON.parse(safeGet("cardBlockedAuthors")) || [];
+    return CARD_BLOCKED_AUTHORS.concat(extra);
+  } catch (e) { return CARD_BLOCKED_AUTHORS; }
+}
 const CARD_KEYWORDS = ["woman abs", "woman legs", "woman leggings", "woman high heels", "black nylons", "fishnet stockings", "thigh high boots", "woman feet"];
 const CARD_CACHE_KEY = "yun_dong_lun_pan_cards_v1";
 const CARD_SEEN_KEY = "yun_dong_lun_pan_cards_seen_v1";
@@ -901,10 +911,13 @@ function fetchCards(perWord, depth) {
       if (d && d.photos) {
         // 同一摄影师连拍只留第一张，防"看着一样"的兄弟图刷屏
         const seenPg = {};
+        const blockedA = cardBlockedAuthors();
         const uniq = d.photos.filter(function(p) {
           const pid = p.photographer_id || p.id;
           if (seenPg[pid]) return false;
           seenPg[pid] = true;
+          const who = (p.photographer || '').trim();
+          if (blockedA.indexOf(who) >= 0) return false; // 作者黑名单：不对味的作者直接过滤
           return true;
         });
         photos = photos.concat(uniq.slice(0, per));
@@ -967,10 +980,15 @@ function popCard() {
   const c = cardCache();
   if (c.length === 0) return null;
   const seen = cardSeen();
-  let i = c.findIndex(function(x) { return seen.indexOf(x.id) < 0; });
+  // 兜底：缓存里可能残留补货前拉的老卡，黑名单作者的一律踢掉
+  const blockedA = cardBlockedAuthors();
+  const clean = c.filter(function(x) { return blockedA.indexOf(x.credit) < 0; });
+  if (clean.length !== c.length) saveCards(clean);
+  const cc = clean.length > 0 ? clean : c;
+  let i = cc.findIndex(function(x) { return seen.indexOf(x.id) < 0; });
   if (i < 0) i = 0; // 全看过也翻，重新来
-  const card = c[i];
-  saveCards(c.slice(0, i).concat(c.slice(i + 1)));
+  const card = cc[i];
+  saveCards(cc.slice(0, i).concat(cc.slice(i + 1)));
   seen.push(card.id);
   saveSeen(seen);
   return card;
