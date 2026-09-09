@@ -210,7 +210,10 @@
 .run-panel { text-align: center; padding: 24px 16px; margin: 10px 0 6px; background: #1c1c2e; border-radius: 18px; }
 .run-big { font-size: 60px; line-height: 1; margin-bottom: 8px; }
 .run-display { font-size: 56px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 2px; color: #e2e4f0; }
-.run-display.low { color: #fb7185; }
+.run-display.reach { color: #4ade80; }
+.run-checkin { display: block; width: 80%; max-width: 320px; margin: 0 auto 10px; padding: 14px 0; font-size: 16px; background: #2b2b44; color: #6b6f85; border: 1px solid #3f3f56; border-radius: 12px; cursor: not-allowed; }
+.run-checkin.ready { background: linear-gradient(135deg,#ec4899,#db2777); color: #fff; font-weight: 700; cursor: pointer; animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
 .run-label { color: #8b8fa3; font-size: 13px; margin: 8px 0 18px; }
 .btn.run-btn { display: block; width: 80%; max-width: 320px; margin: 0 auto 10px; padding: 16px 0; font-size: 20px; background: linear-gradient(135deg,#22c55e,#16a34a); }
 .btn.run-btn.running { background: linear-gradient(135deg,#f59e0b,#d97706); }
@@ -268,9 +271,10 @@
   <!-- 户外跑步模式 -->
   <div class="run-panel" id="outdoorPanel" style="display:none">
     <div class="run-big" id="runBig">🏃</div>
-    <div class="run-display" id="runDisplay">20:00</div>
-    <div class="run-label">🏃 户外跑 · 跑满 20 分钟自动打卡 + 翻牌奖励</div>
+    <div class="run-display" id="runDisplay">00:00</div>
+    <div class="run-label" id="runLabel">🏃 户外跑 · 跑到 20:00 解锁打卡，回住处再领奖也行</div>
     <button class="btn run-btn" id="runBtn">▶ 开跑</button>
+    <button class="btn run-checkin" id="runCheckinBtn" disabled>🔒 打卡领奖励（跑满 20 分钟解锁）</button>
     <button class="btn small" id="runReset" style="display:none">↺ 重置</button>
   </div>
 
@@ -1204,53 +1208,60 @@ function setMode(m) {
 modeIndoor.addEventListener("click", function() { setMode("indoor"); });
 modeOutdoor.addEventListener("click", function() { setMode("outdoor"); });
 
-// ===== 户外 20 分钟倒计时 =====
-const RUN_SECONDS = 20 * 60;
-let runRemaining = RUN_SECONDS;
+// ===== 户外跑步：正计时，到 20:00 解锁打卡领奖 =====
+const RUN_TARGET = 20 * 60;   // 解锁打卡的目标秒数
+let runSeconds = 0;           // 正计时（已跑秒数）
 let runInterval = null;
 let runRunning = false;
+let runReady = false;         // 满20分钟，可打卡
+let runClaimed = false;       // 本组已打卡
 
 function updateRunDisplay() {
   const el = document.getElementById("runDisplay");
-  el.textContent = formatTime(runRemaining);
-  el.classList.toggle("low", runRemaining <= 60);
+  el.textContent = formatTime(runSeconds);
+  el.classList.toggle("reach", runReady);
 }
-function runFinish() {
-  runRunning = false;
-  clearInterval(runInterval);
-  runInterval = null;
-  const btn = document.getElementById("runBtn");
-  btn.textContent = "✅ 跑完！已打卡 + 翻牌";
-  btn.classList.remove("running");
+function unlockCheckin() {
+  if (runReady) return;
+  runReady = true;
   beep();
-  // 记录 + 打卡（幂等）+ 翻牌奖励
+  document.getElementById("runLabel").textContent = "🏃 跑够 20 分钟了！打卡领奖（回住处再点也行）";
+  const cb = document.getElementById("runCheckinBtn");
+  cb.disabled = false;
+  cb.classList.add("ready");
+  cb.textContent = "🎁 打卡领奖";
+}
+function claimRunReward() {
+  if (!runReady || runClaimed) return;
+  runClaimed = true;
+  const cb = document.getElementById("runCheckinBtn");
+  cb.disabled = true;
+  cb.classList.remove("ready");
+  cb.textContent = "✅ 已打卡领奖";
+  document.getElementById("runLabel").textContent = "🏃 今天这趟值了，明天继续";
+  // 记录 + 打卡 + 翻牌（用户手动点，环境安全）
   try {
     const data = loadData();
     const today = todayStr();
     if (!data.days[today]) data.days[today] = { sessions: [], done: false };
-    data.days[today].sessions.push("🏃 户外跑 20分钟");
+    data.days[today].sessions.push("🏃 户外跑 " + Math.floor(runSeconds / 60) + "分钟");
     if (!data.days[today].done) data.days[today].done = true;
     saveData(data);
     updateCheckin();
     updateStats();
   } catch (e) { /* 打卡失败不阻塞翻牌 */ }
-  flipCard(); // 跑完奖励：随机翻一张
+  flipCard();
 }
 document.getElementById("runBtn").addEventListener("click", function() {
   if (!runRunning) {
     runRunning = true;
-    silentRefill(true); // 开跑前补满库存，跑完秒翻
     this.textContent = "⏸ 暂停";
     this.classList.add("running");
     document.getElementById("runReset").style.display = "inline-block";
     runInterval = setInterval(function() {
-      runRemaining--;
+      runSeconds++;
       updateRunDisplay();
-      if (runRemaining <= 0) {
-        clearInterval(runInterval);
-        runInterval = null;
-        runFinish();
-      }
+      if (!runReady && runSeconds >= RUN_TARGET) unlockCheckin();
     }, 1000);
   } else {
     runRunning = false;
@@ -1260,15 +1271,23 @@ document.getElementById("runBtn").addEventListener("click", function() {
     this.classList.remove("running");
   }
 });
+document.getElementById("runCheckinBtn").addEventListener("click", claimRunReward);
 document.getElementById("runReset").addEventListener("click", function() {
   runRunning = false;
   clearInterval(runInterval);
   runInterval = null;
-  runRemaining = RUN_SECONDS;
+  runSeconds = 0;
+  runReady = false;
+  runClaimed = false;
   updateRunDisplay();
+  document.getElementById("runLabel").textContent = "🏃 户外跑 · 跑到 20:00 解锁打卡，回住处再领奖也行";
   const btn = document.getElementById("runBtn");
   btn.textContent = "▶ 开跑";
   btn.classList.remove("running");
+  const cb = document.getElementById("runCheckinBtn");
+  cb.disabled = true;
+  cb.classList.remove("ready");
+  cb.textContent = "🔒 打卡领奖励（跑满 20 分钟解锁）";
   this.style.display = "none";
 });
 
