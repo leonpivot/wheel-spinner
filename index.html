@@ -202,11 +202,28 @@
   .card-btns .btn { flex: 1; padding: 11px 0; font-size: 15px; margin-top: 0; }
   .btn.flip-again { background: #db2777; }
   .btn.flip-again:hover { background: #ec4899; }
+
+/* ===== 户外模式 ===== */
+.mode-tabs { display: flex; gap: 8px; justify-content: center; margin: 12px 0 4px; }
+.mode-tab { flex: 1; max-width: 220px; padding: 10px 0; border: 1px solid #3f3f56; border-radius: 12px; background: #232338; color: #b8bccf; font-size: 14px; cursor: pointer; }
+.mode-tab.active { background: #6366f1; color: #fff; border-color: #6366f1; font-weight: 600; }
+.run-panel { text-align: center; padding: 24px 16px; margin: 10px 0 6px; background: #1c1c2e; border-radius: 18px; }
+.run-big { font-size: 60px; line-height: 1; margin-bottom: 8px; }
+.run-display { font-size: 56px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 2px; color: #e2e4f0; }
+.run-display.low { color: #fb7185; }
+.run-label { color: #8b8fa3; font-size: 13px; margin: 8px 0 18px; }
+.btn.run-btn { display: block; width: 80%; max-width: 320px; margin: 0 auto 10px; padding: 16px 0; font-size: 20px; background: linear-gradient(135deg,#22c55e,#16a34a); }
+.btn.run-btn.running { background: linear-gradient(135deg,#f59e0b,#d97706); }
+
 </style>
 </head>
 <body>
   <h1>🎡 运动轮盘</h1>
   <div class="subtitle">转到啥练啥 · 20分钟收工</div>
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="modeIndoor">🎡 室内轮盘</button>
+    <button class="mode-tab" id="modeOutdoor">🏃 户外跑步</button>
+  </div>
 
   <div class="goal" id="goal">
     <div class="goal-main" id="goalMain"></div>
@@ -246,6 +263,15 @@
       <button class="btn small" id="timerStart">▶ 开始计时</button>
       <button class="btn small" id="timerReset" style="display:none">↺ 重置</button>
     </div>
+  </div>
+
+  <!-- 户外跑步模式 -->
+  <div class="run-panel" id="outdoorPanel" style="display:none">
+    <div class="run-big" id="runBig">🏃</div>
+    <div class="run-display" id="runDisplay">20:00</div>
+    <div class="run-label">🏃 户外跑 · 跑满 20 分钟自动打卡 + 翻牌奖励</div>
+    <button class="btn run-btn" id="runBtn">▶ 开跑</button>
+    <button class="btn small" id="runReset" style="display:none">↺ 重置</button>
   </div>
 
   <div class="checkin">
@@ -1153,6 +1179,98 @@ document.getElementById("cardMask").addEventListener("click", function(e) {
 document.getElementById("mainBtn").addEventListener("click", spinWheel);
 document.getElementById("spinBtn").addEventListener("click", spinWheel);
 document.getElementById("againBtn").addEventListener("click", spinWheel);
+
+// ===== 户外模式切换 =====
+const modeIndoor = document.getElementById("modeIndoor");
+const modeOutdoor = document.getElementById("modeOutdoor");
+const outdoorPanel = document.getElementById("outdoorPanel");
+function setMode(m) {
+  const indoor = m === "indoor";
+  modeIndoor.classList.toggle("active", indoor);
+  modeOutdoor.classList.toggle("active", !indoor);
+  // 室内件
+  ["result","mainBtn","againBtn"].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = indoor ? "" : "none";
+  });
+  const wheelWrap = document.querySelector(".wheel-wrap");
+  if (wheelWrap) wheelWrap.style.display = indoor ? "" : "none";
+  // 室内计时器容器
+  const timerWrap = document.querySelector(".timer");
+  if (timerWrap) timerWrap.style.display = indoor ? "" : "none";
+  // 户外
+  outdoorPanel.style.display = indoor ? "none" : "";
+}
+modeIndoor.addEventListener("click", function() { setMode("indoor"); });
+modeOutdoor.addEventListener("click", function() { setMode("outdoor"); });
+
+// ===== 户外 20 分钟倒计时 =====
+const RUN_SECONDS = 20 * 60;
+let runRemaining = RUN_SECONDS;
+let runInterval = null;
+let runRunning = false;
+
+function updateRunDisplay() {
+  const el = document.getElementById("runDisplay");
+  el.textContent = formatTime(runRemaining);
+  el.classList.toggle("low", runRemaining <= 60);
+}
+function runFinish() {
+  runRunning = false;
+  clearInterval(runInterval);
+  runInterval = null;
+  const btn = document.getElementById("runBtn");
+  btn.textContent = "✅ 跑完！已打卡 + 翻牌";
+  btn.classList.remove("running");
+  beep();
+  // 记录 + 打卡（幂等）+ 翻牌奖励
+  try {
+    const data = loadData();
+    const today = todayStr();
+    if (!data.days[today]) data.days[today] = { sessions: [], done: false };
+    data.days[today].sessions.push("🏃 户外跑 20分钟");
+    if (!data.days[today].done) data.days[today].done = true;
+    saveData(data);
+    updateCheckin();
+    updateStats();
+  } catch (e) { /* 打卡失败不阻塞翻牌 */ }
+  flipCard(); // 跑完奖励：随机翻一张
+}
+document.getElementById("runBtn").addEventListener("click", function() {
+  if (!runRunning) {
+    runRunning = true;
+    silentRefill(true); // 开跑前补满库存，跑完秒翻
+    this.textContent = "⏸ 暂停";
+    this.classList.add("running");
+    document.getElementById("runReset").style.display = "inline-block";
+    runInterval = setInterval(function() {
+      runRemaining--;
+      updateRunDisplay();
+      if (runRemaining <= 0) {
+        clearInterval(runInterval);
+        runInterval = null;
+        runFinish();
+      }
+    }, 1000);
+  } else {
+    runRunning = false;
+    clearInterval(runInterval);
+    runInterval = null;
+    this.textContent = "▶ 继续跑";
+    this.classList.remove("running");
+  }
+});
+document.getElementById("runReset").addEventListener("click", function() {
+  runRunning = false;
+  clearInterval(runInterval);
+  runInterval = null;
+  runRemaining = RUN_SECONDS;
+  updateRunDisplay();
+  const btn = document.getElementById("runBtn");
+  btn.textContent = "▶ 开跑";
+  btn.classList.remove("running");
+  this.style.display = "none";
+});
 
 // ===== 20分钟计时器 =====
 const TOTAL_SECONDS = 20 * 60;
