@@ -1208,23 +1208,29 @@ function setMode(m) {
 modeIndoor.addEventListener("click", function() { setMode("indoor"); });
 modeOutdoor.addEventListener("click", function() { setMode("outdoor"); });
 
-// ===== 户外跑步：正计时，到 20:00 解锁打卡领奖 =====
+// ===== 户外跑步：正计时（时间戳计算，锁屏/后台也不丢），到 20:00 解锁打卡领奖 =====
 const RUN_TARGET = 20 * 60;   // 解锁打卡的目标秒数
-let runSeconds = 0;           // 正计时（已跑秒数）
+let runAccum = 0;             // 暂停时已累计的秒数
+let runStartAt = null;        // 本次运行的起始时间戳；null = 暂停中
 let runInterval = null;
-let runRunning = false;
 let runReady = false;         // 满20分钟，可打卡
 let runClaimed = false;       // 本组已打卡
 
+// 核心：已跑秒数 = 累计 + (现在 - 起点)。不靠 setInterval 数秒，
+// 锁屏/切后台被冻结也不怕——回到前台重算一次就是真实时长。
+function runElapsed() {
+  return runAccum + (runStartAt ? (Date.now() - runStartAt) / 1000 : 0);
+}
 function updateRunDisplay() {
   const el = document.getElementById("runDisplay");
-  el.textContent = formatTime(runSeconds);
+  el.textContent = formatTime(Math.floor(runElapsed()));
   el.classList.toggle("reach", runReady);
 }
 function unlockCheckin() {
   if (runReady) return;
   runReady = true;
   beep();
+  try { if (navigator.vibrate) navigator.vibrate([120, 80, 120]); } catch (e) {}
   document.getElementById("runLabel").textContent = "🏃 跑够 20 分钟了！打卡领奖（回住处再点也行）";
   const cb = document.getElementById("runCheckinBtn");
   cb.disabled = false;
@@ -1244,7 +1250,8 @@ function claimRunReward() {
     const data = loadData();
     const today = todayStr();
     if (!data.days[today]) data.days[today] = { sessions: [], done: false };
-    data.days[today].sessions.push("🏃 户外跑 " + Math.floor(runSeconds / 60) + "分钟");
+    const mins = Math.max(1, Math.floor(runElapsed() / 60));
+    data.days[today].sessions.push("🏃 户外跑 " + mins + "分钟");
     if (!data.days[today].done) data.days[today].done = true;
     saveData(data);
     updateCheckin();
@@ -1252,31 +1259,40 @@ function claimRunReward() {
   } catch (e) { /* 打卡失败不阻塞翻牌 */ }
   flipCard();
 }
+// 刷新显示 + 到点检查（每秒调一次；被冻结也没事，回前台会补算）
+function tickRun() {
+  updateRunDisplay();
+  if (!runReady && runElapsed() >= RUN_TARGET) unlockCheckin();
+}
 document.getElementById("runBtn").addEventListener("click", function() {
-  if (!runRunning) {
-    runRunning = true;
+  if (runStartAt === null) {
+    // 开始 / 继续
+    runStartAt = Date.now();
     this.textContent = "⏸ 暂停";
     this.classList.add("running");
     document.getElementById("runReset").style.display = "inline-block";
-    runInterval = setInterval(function() {
-      runSeconds++;
-      updateRunDisplay();
-      if (!runReady && runSeconds >= RUN_TARGET) unlockCheckin();
-    }, 1000);
+    if (!runInterval) runInterval = setInterval(tickRun, 1000);
+    tickRun();
   } else {
-    runRunning = false;
-    clearInterval(runInterval);
-    runInterval = null;
+    // 暂停：把已跑时长结算进累计
+    runAccum = runElapsed();
+    runStartAt = null;
+    if (runInterval) { clearInterval(runInterval); runInterval = null; }
     this.textContent = "▶ 继续跑";
     this.classList.remove("running");
+    tickRun();
   }
 });
+// 回前台多重保险：锁屏解锁 / 切回标签 / 从后台恢复，都立即补算一次
+document.addEventListener("visibilitychange", function() { if (!document.hidden) tickRun(); });
+window.addEventListener("focus", tickRun);
+window.addEventListener("pageshow", tickRun);
+
 document.getElementById("runCheckinBtn").addEventListener("click", claimRunReward);
 document.getElementById("runReset").addEventListener("click", function() {
-  runRunning = false;
-  clearInterval(runInterval);
-  runInterval = null;
-  runSeconds = 0;
+  runAccum = 0;
+  runStartAt = null;
+  if (runInterval) { clearInterval(runInterval); runInterval = null; }
   runReady = false;
   runClaimed = false;
   updateRunDisplay();
